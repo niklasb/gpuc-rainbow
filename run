@@ -1,0 +1,15 @@
+#!/bin/bash
+prog="$1"
+shift
+if [[ ! -d build ]]; then
+  mkdir build
+  cd build
+  cmake ..
+  cd ..
+fi
+cd build
+make "$prog" >&2
+res=$?
+cd ..
+[[ $res != 0 ]] && exit $res
+build/"$prog" "$@"
