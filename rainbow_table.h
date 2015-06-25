@@ -1,5 +1,4 @@
-#ifndef _RAINBOW_TABLE_H
-#define _RAINBOW_TABLE_H
+#pragma once
 
 #include <cassert>
 #include <fstream>
@@ -54,5 +53,3 @@ struct RainbowTable {
     f.read((char*)&table[0], num * sizeof table[0]);
   }
 };
-
-#endif

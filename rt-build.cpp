@@ -4,8 +4,6 @@
 #include <sstream>
 #include <unordered_set>
 
-#include "io.h"
-#include "timing.h"
 #if !HAVE_OPENCL
 #  error "Need OpenCL"
 #endif
@@ -13,6 +11,7 @@
 #include "hash.h"
 #include "rainbow_table.h"
 #include "rainbow_cpu.h"
+#include "rainbow_gpu.h"
 #include "utils.h"
 
 using namespace std;
@@ -41,6 +40,10 @@ void usage(char *argv0) {
        << "           memory, but much faster)" << endl
        << "  -i INT   Table index in case multiple tables are generated" << endl
        << "  -r       Specify random seed (defaults to constant value)" << endl
+       << "  -v       OpenCL only: Verify results using CPU implementation" << endl
+       << "  -b INT   OpenCL only: block size" << endl
+       << "  -l INT   OpenCL only: local group size" << endl
+       << "  -g INT   OpenCL only: global group size" << endl
        << endl
        << "EXAMPLES" << endl
        << "  " << argv0 << " -t 7 abcdefghijklmnopqrstuvwxyz0123456789" << endl;
@@ -56,11 +59,22 @@ uint64_t samples = 0;
 uint64_t seed = 0;
 RainbowTableParams params;
 string outfile;
+bool verify = 0;
+uint64_t local_size = 1<<8;
+uint64_t global_size = 1<<15;
+uint64_t block_size = 1<<5;
+
+const int default_chain_len = 1000;
+const int default_table_index = 0;
 
 const double eps = 1e-9;
 
 void parse_opts(int argc, char *argv[]) {
   int pos = 0;
+  // defaults
+  params.chain_len = default_chain_len;
+  params.table_index = default_table_index;
+
   for (int i = 1; i < argc; ++i) {
     string o(argv[i]);
     // 0 params
@@ -74,6 +88,10 @@ void parse_opts(int argc, char *argv[]) {
     }
     if (o == "-c") {
       check_coverage = true;
+      continue;
+    }
+    if (o == "-v") {
+      verify = true;
       continue;
     }
     // 1 params
@@ -135,6 +153,39 @@ void parse_opts(int argc, char *argv[]) {
       ++i;
       continue;
     }
+    if (o == "-l") {
+      if (i + 1 < argc) {
+        if (!(stringstream(argv[i+1]) >> local_size)) {
+          cout << "ERROR: local group size should be an integer" << endl;
+        }
+      } else {
+        usage(argv[0]);
+      }
+      ++i;
+      continue;
+    }
+    if (o == "-g") {
+      if (i + 1 < argc) {
+        if (!(stringstream(argv[i+1]) >> global_size)) {
+          cout << "ERROR: global group size should be an integer" << endl;
+        }
+      } else {
+        usage(argv[0]);
+      }
+      ++i;
+      continue;
+    }
+    if (o == "-b") {
+      if (i + 1 < argc) {
+        if (!(stringstream(argv[i+1]) >> block_size)) {
+          cout << "ERROR: block size should be an integer" << endl;
+        }
+      } else {
+        usage(argv[0]);
+      }
+      ++i;
+      continue;
+    }
     // positional
     if (pos == 0) {
       if (!(stringstream(o) >> max_string_len) || max_string_len <= 0) {
@@ -180,6 +231,13 @@ int main(int argc, char* argv[]) {
   cout << "  rand seed   = " << seed << endl;
   if (check_coverage)
     cout << "  cov samples = " << samples << endl;
+  cout << "  use OpenCL  = " << (use_opencl?"yes":"no") << endl;
+  if (use_opencl) {
+    cout << "  verify      = " << (verify?"yes":"no") << endl;
+    cout << "  block size  = " << block_size << endl;
+    cout << "  local size  = " << local_size << endl;
+    cout << "  global size = " << global_size << endl;
+  }
 
   params.num_start_values =
     min((uint64_t)(alpha * params.num_strings), params.num_strings);
@@ -189,10 +247,17 @@ int main(int argc, char* argv[]) {
       << "% of search space)" << endl;
 
   RainbowTable rt;
-  CPUImplementation cpu(params);
+  utils::Stats stats;
+  CPUImplementation cpu(params, stats);
+  OpenCLApp cl;
+  GPUImplementation gpu(params, cl, cpu, stats, verify,
+      local_size, global_size, block_size);
   if (use_opencl) {
-    cerr << "OpenCL not implemented!" << endl;
-    exit(1);
+    cl.print_cl_info();
+  }
+
+  if (use_opencl) {
+    gpu.build(rt);
   } else {
     cpu.build(rt);
   }
@@ -205,48 +270,59 @@ int main(int argc, char* argv[]) {
     if (samples == 0) {
       cout << "Measuring exact coverage" << endl;
       unordered_set<uint64_t> covered;
-      for (size_t i = 0; i < rt.table.size(); ++i) {
-        auto& entry = rt.table[i];
-        utils::print_progress(i, rt.table.size());
-        //cout << "start=" << entry.second << endl;
-        /*
-        construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
-          cout << x << " "; print_hash(h); cout << endl;
-        });
-        */
-        uint64_t endpoint = cpu.construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
-          covered.insert(x);
-          //assert(is_covered(x, rainbow_table));
-
+      stats.add_timing("time_coverage_exact", [&]() {
+        utils::Progress progress(rt.table.size());
+        for (size_t i = 0; i < rt.table.size(); ++i) {
+          auto& entry = rt.table[i];
+          progress.report(i);
+          //cout << "start=" << entry.second << endl;
           /*
-          if (!is_covered(x, rainbow_table)) {
-            Hash h;
-            compute_hash(x, h);
-            uint64_t res;
-            //cout << "lookup "; print_hash(h); cout << endl;
-            //cout << "lookup result=" << lookup(h, rainbow_table, res, true) << endl;
-            cout << res<< endl;
-          }
+          construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
+            cout << x << " "; print_hash(h); cout << endl;
+          });
           */
-        });
-        assert(endpoint == entry.first);
-      }
-      utils::finish_progress();
+          uint64_t endpoint = cpu.construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
+            covered.insert(x);
+            //assert(is_covered(x, rainbow_table));
+
+            /*
+            if (!is_covered(x, rainbow_table)) {
+              Hash h;
+              compute_hash(x, h);
+              uint64_t res;
+              //cout << "lookup "; print_hash(h); cout << endl;
+              //cout << "lookup result=" << lookup(h, rainbow_table, res, true) << endl;
+              cout << res<< endl;
+            }
+            */
+          });
+          assert(endpoint == entry.first);
+        }
+        progress.finish();
+      });
       cout << "Coverage: " << setprecision(4)
           << fixed << (100.*covered.size()/params.num_strings) << "%" << endl;
     } else {
       uint64_t found = 0;
       std::mt19937 gen(seed);
       cout << "Estimating coverage using " << samples << " samples" << endl;
-      for (uint64_t i = 0; i < samples; ++i) {
-        utils::print_progress(i, samples);
-        uint64_t sample = (((uint64_t)gen() << 32) | gen()) % params.num_strings;
-        if (cpu.is_covered(sample, rt))
-          found++;
-      }
-      utils::finish_progress();
+      stats.add_timing("time_coverage_sampling", [&]() {
+        utils::Progress progress(samples);
+        for (uint64_t i = 0; i < samples; ++i) {
+          progress.report(i);
+          uint64_t sample = (((uint64_t)gen() << 32) | gen()) % params.num_strings;
+          if (cpu.is_covered(sample, rt))
+            found++;
+        }
+        progress.finish();
+      });
       cout << "Coverage: " << setprecision(4) << fixed
           << (100.*found/samples) << "%" << endl;
     }
+  }
+
+  cout << "STATS" << endl;
+  for (auto& it : stats.stats) {
+    cout << "  " << it.first << " = " << it.second << endl;
   }
 }

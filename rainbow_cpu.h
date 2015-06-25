@@ -1,5 +1,4 @@
-#ifndef _RAINBOW_CPU_H
-#define _RAINBOW_CPU_H
+#pragma once
 
 #include <algorithm>
 #include <limits>
@@ -22,7 +21,11 @@ static void uniqify(std::vector<T>& vec) {
 
 struct CPUImplementation {
   RainbowTableParams p;
-  CPUImplementation(const RainbowTableParams& p) : p(p) { }
+  utils::Stats& stats;
+
+  CPUImplementation(const RainbowTableParams& p, utils::Stats& stats)
+    : p(p), stats(stats)
+  { }
 
   void string_from_index(std::uint64_t n, unsigned char* buf, std::uint64_t* len) {
     std::uint64_t base = p.alphabet.size();
@@ -44,7 +47,6 @@ struct CPUImplementation {
   std::uint64_t reduce(const Hash& h, std::uint64_t round)
   {
     std::uint64_t x = 0;
-    std::uint64_t base = p.alphabet.size();
     for (std::uint64_t i = 0; i < h.size(); ++i) {
       x = ((std::uint64_t)x * 0x100 + h[i]) % p.num_strings;
     }
@@ -88,6 +90,13 @@ struct CPUImplementation {
     return construct_chain(x, start_iteration, [](std::uint64_t x, const Hash& h) {});
   }
 
+  void sort_and_uniqify(RainbowTable& rt) {
+    std::sort(std::begin(rt.table), std::end(rt.table));
+    uniqify(rt.table, [&](const RainbowTable::Entry& a, const RainbowTable::Entry& b) {
+      return a.first == b.first;
+    });
+  }
+
   void build(RainbowTable& rt) {
     std::uint64_t offset = p.table_index * p.num_start_values;
     if (offset + p.num_start_values > p.num_strings) {
@@ -95,15 +104,17 @@ struct CPUImplementation {
       exit(1);
     }
     rt.table.resize(p.num_start_values);
-    for (std::uint64_t i = 0; i < p.num_start_values; ++i) {
-      utils::print_progress(i, p.num_start_values);
-      std::uint64_t start = offset + i;
-      rt.table[i] = {construct_chain(start, 0), start};
-    }
-    utils::finish_progress();
-    std::sort(std::begin(rt.table), std::end(rt.table));
-    uniqify(rt.table, [&](const RainbowTable::Entry& a, const RainbowTable::Entry& b) {
-      return a.first == b.first;
+    stats.add_timing("time_generate", [&]() {
+      utils::Progress progress(p.num_start_values);
+      for (std::uint64_t i = 0; i < p.num_start_values; ++i) {
+        progress.report(i);
+        std::uint64_t start = offset + i;
+        rt.table[i] = {construct_chain(start, 0), start};
+      }
+      progress.finish();
+    });
+    stats.add_timing("time_sort", [&]() {
+      sort_and_uniqify(rt);
     });
   }
 
@@ -154,5 +165,3 @@ struct CPUImplementation {
     return false;
   }
 };
-
-#endif

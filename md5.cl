@@ -1,30 +1,11 @@
 // adapted from http://www2.htw-dresden.de/~s64599/6.%20Semester/Informationssicherheit/Prakt/Prakt01/john-1.7.9-jumbo-7/src/opencl/md5_kernel.cl
 
-uint isdigit(uint x);
-bool check(uint4 hash);
 uint4 md5_compress(uint *buf, uint4 state);
-uint4 md5(uint *buf, uint len);
+void md5(uint *buf, uint len, uint* hash);
 
 /* Macros for reading/writing chars from int32's (from rar_kernel.cl) */
 #define GETCHAR(buf, index) (((uchar*)(buf))[(index)])
 #define PUTCHAR(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << (((index) & 3) << 3))) + ((val) << (((index) & 3) << 3))
-
-uint isdigit(uint x) {
-  uint res = 1;
-  for (int i = 0; i < 8; ++i)
-    res &= ((x >> (i<<2))& 0xf) <= 9;
-  return res;
-}
-
-bool check(uint4 hash) {
-  return 1
-    & ((hash.x & 0xff) == 0x0e)
-    & isdigit(hash.x & ~0xff)
-    & isdigit(hash.y)
-    & isdigit(hash.z)
-    & isdigit(hash.w)
-    ;
-}
 
 uint4 md5_compress(uint *buf, uint4 state) {
   /* The basic MD5 functions */
@@ -125,25 +106,19 @@ uint4 md5_compress(uint *buf, uint4 state) {
   res.z = c + state.z;
   res.w = d + state.w;
   return res;
+#undef GET
+#undef STEP
+#undef F
+#undef G
+#undef H
+#undef I
 }
 
 // 1 block only. len must be <= 55
-uint4 md5(uint *buf, uint len) {
-  /* The basic MD5 functions */
-  #define F(x, y, z)			((z) ^ ((x) & ((y) ^ (z))))
-  #define G(x, y, z)			((y) ^ ((z) & ((x) ^ (y))))
-  #define H(x, y, z)			((x) ^ (y) ^ (z))
-  #define I(x, y, z)			((y) ^ ((x) | ~(z)))
-
-  /* The MD5 transformation for all four rounds. */
-  #define STEP(f, a, b, c, d, x, t, s) \
-      (a) += f((b), (c), (d)) + (x) + (t); \
-      (a) = (((a) << (s)) | ((a) >> (32 - (s)))); \
-      (a) += (b);
-
-  #define GET(i) (buf[(i)])
-
+void md5(uint *buf, uint len, uint* hash) {
   PUTCHAR(buf, len, 0x80);
+  for (int i = len + 1; i < 64; ++i)
+    PUTCHAR(buf, i, 0);
   PUTCHAR(buf, 56, len << 3);
   PUTCHAR(buf, 57, len >> 5);
   uint4 state;
@@ -151,40 +126,12 @@ uint4 md5(uint *buf, uint len) {
   state.y = 0xefcdab89;
   state.z = 0x98badcfe;
   state.w = 0x10325476;
-  return md5_compress(buf, state);
+  state = md5_compress(buf, state);
+  hash[0] = state.x;
+  hash[1] = state.y;
+  hash[2] = state.z;
+  hash[3] = state.w;
 }
 
-__kernel void GenerateAndCheck(
-    const __global uint *prefix, uint prefix_len,
-    const __global uint *suffix, uint suffix_len,
-    uint lo, uint hi, uint sz,
-    uint offset,
-    __global uchar *results
-    /*__global uint *debug*/
-    )
-{
-  uint id = get_global_id(0);
-  uint buf[16];
-  for (uint i = 0; i < 16; ++i)
-    buf[i] = 0;
-  uint p = 0;
-  for (; p < prefix_len; ++p)
-    PUTCHAR(buf, p, GETCHAR(prefix, p));
-  uint num = id + offset;
-  uint base = hi - lo + 1;
-  for (; p < prefix_len + sz; ++p) {
-    PUTCHAR(buf, p, num % base + lo);
-    num /= base;
-  }
-  for (uint j = 0; j < suffix_len; ++j) {
-    PUTCHAR(buf, p, GETCHAR(suffix, j));
-    ++p;
-  }
-  /*for (int i = 0; i < 16; ++i)*/
-    /*debug[id * 16 + i] = buf[i];*/
-
-  uint4 hash = md5(buf, p);
-  /*for (int i = 0; i < 4; ++i)*/
-    /*debug[id * 16 + 5 + i] = hash[i];*/
-  results[id]=check(hash);
-}
+#define HASH_SIZE 4
+#define compute_hash md5

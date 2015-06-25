@@ -1,5 +1,4 @@
-#ifndef _HASH_H
-#define _HASH_H
+#pragma once
 
 #include <array>
 #include <cassert>
@@ -18,5 +17,3 @@ void print_hash(const Hash& h) {
   for (size_t i = 0; i < hash_size; ++i)
     printf("%02x", h[i]);
 }
-
-#endif
