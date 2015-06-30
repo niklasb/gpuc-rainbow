@@ -49,7 +49,9 @@ struct GPUImplementation {
 
   void build(RainbowTable& rt) {
     auto chain_buf = cl.alloc<cl_ulong>(2 * global_size * block_size);
-    auto alphabet_buf = cl.alloc<char>(p.alphabet.size(), CL_MEM_READ_ONLY);
+    auto alphabet_buf =
+      cl.alloc<char>((p.alphabet.size() + 3) / 4 * 4, CL_MEM_READ_ONLY);
+    //auto debug_buf = cl.alloc<cl_ulong>(global_size * block_size);
     cl.write_async(alphabet_buf, p.alphabet.c_str(), p.alphabet.size());
 
     uint64_t lo = p.table_index * p.num_start_values;
@@ -62,7 +64,8 @@ struct GPUImplementation {
     kernel_generate_chains.setArg(5, alphabet_buf);
     kernel_generate_chains.setArg(6, (cl_int)p.alphabet.size());
     kernel_generate_chains.setArg(7, chain_buf);
-    kernel_generate_chains.setArg(8, block_size);
+    kernel_generate_chains.setArg(8, (cl_int)block_size);
+    //kernel_generate_chains.setArg(9, debug_buf);
 
     rt.table.resize(p.num_start_values);
     stats.add_timing("time_generate", [&]() {
@@ -77,6 +80,12 @@ struct GPUImplementation {
             cl::NDRange(local_size));
         cl.finish_queue();
         cl.read_sync(chain_buf, &rt.table[offset - lo], count);
+        std::vector<uint64_t> debug(global_size*block_size);
+        //cl.read_sync(debug_buf, debug.data(), count);
+        //std::cout << std::endl;
+        //for (int i = 0; i < count; ++i)
+          //std::cout << debug[i] << " ";
+        //std::cout << std::endl;
       }
       progress.finish();
     });
@@ -88,10 +97,10 @@ struct GPUImplementation {
       stats.add_timing("time_verify", [&]() {
         int i = 0;
         for (auto& it : rt.table) {
-          if (it.first != cpu.construct_chain(it.second,0)) {
+          if (it.first != cpu.construct_chain(it.second, 0, p.chain_len).first) {
             std::cout << i << " " << it.first << " " << it.second << std::endl;
+            assert(0);
           }
-          assert(it.first == cpu.construct_chain(it.second, 0));
           ++i;
         }
       });

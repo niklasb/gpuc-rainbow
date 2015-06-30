@@ -4,7 +4,7 @@ uint4 md5_compress(uint *buf, uint4 state);
 void md5(uint *buf, uint len, uint* hash);
 
 /* Macros for reading/writing chars from int32's (from rar_kernel.cl) */
-#define GETCHAR(buf, index) (((uchar*)(buf))[(index)])
+#define GETCHAR(buf, index) ((((buf)[((index)>>2)] >> (((index) & 3)<<3)))&0xff)
 #define PUTCHAR(buf, index, val) (buf)[(index)>>2] = ((buf)[(index)>>2] & ~(0xffU << (((index) & 3) << 3))) + ((val) << (((index) & 3) << 3))
 
 uint4 md5_compress(uint *buf, uint4 state) {

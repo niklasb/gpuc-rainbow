@@ -60,34 +60,23 @@ struct CPUImplementation {
     ::compute_hash(buf, len, h);
   }
 
-  template <typename F>
-  std::uint64_t construct_chain(Hash h, std::uint64_t start_iteration, F cb) {
+  std::pair<std::uint64_t,Hash> construct_chain(Hash h, std::uint64_t start_iteration, std::uint64_t end_iteration) {
+    assert(start_iteration < end_iteration);
     std::uint64_t x;
     auto t = p.chain_len;
-    for (std::uint64_t i = start_iteration; i < t; ++i) {
+    for (std::uint64_t i = start_iteration; i < end_iteration; ++i) {
       x = reduce(h, i);
-      if (i < t - 1) {
-        compute_hash(x, h);
-        cb(x, h);
-      }
+      compute_hash(x, h);
     }
-    return x;
+    return {x, h};
   }
 
-  std::uint64_t construct_chain(const Hash& h, std::uint64_t start_iteration) {
-    return construct_chain(h, start_iteration, [](std::uint64_t x, const Hash& h) {});
-  }
-
-  template <typename F>
-  std::uint64_t construct_chain(std::uint64_t x, std::uint64_t start_iteration, F cb) {
+  std::pair<std::uint64_t,Hash> construct_chain(std::uint64_t x, std::uint64_t start_iteration, std::uint64_t end_iteration) {
     Hash h;
     compute_hash(x, h);
-    cb(x, h);
-    return construct_chain(h, start_iteration, cb);
-  }
-
-  std::uint64_t construct_chain(std::uint64_t x, std::uint64_t start_iteration) {
-    return construct_chain(x, start_iteration, [](std::uint64_t x, const Hash& h) {});
+    if (start_iteration == end_iteration)
+      return {x, h};
+    return construct_chain(h, start_iteration, end_iteration);
   }
 
   void sort_and_uniqify(RainbowTable& rt) {
@@ -109,7 +98,7 @@ struct CPUImplementation {
       for (std::uint64_t i = 0; i < p.num_start_values; ++i) {
         progress.report(i);
         std::uint64_t start = offset + i;
-        rt.table[i] = {construct_chain(start, 0), start};
+        rt.table[i] = {construct_chain(start, 0, p.chain_len).first, start};
       }
       progress.finish();
     });
@@ -119,23 +108,28 @@ struct CPUImplementation {
   }
 
   bool lookup_single(const Hash& h, const RainbowTable& rt, std::uint64_t& res) {
-    for (int i = 0; i <= p.chain_len; ++i) {
-      std::uint64_t endpoint = construct_chain(h, i);
+    for (int i = 0; i < p.chain_len; ++i) {
+      std::uint64_t endpoint = construct_chain(h, i, p.chain_len).first;
       auto l = std::lower_bound(std::begin(rt.table), std::end(rt.table),
           std::make_pair(endpoint, std::uint64_t{0}));
       auto r = std::upper_bound(std::begin(rt.table), std::end(rt.table),
           std::make_pair(endpoint, std::numeric_limits<std::uint64_t>::max()));
       for (auto it = l; it != r; ++it) {
         std::uint64_t start = it->second;
-        bool found = false;
-        construct_chain(start, 0, [&](std::uint64_t x, const Hash& g) {
-          if (g == h) {
-            found = true;
-            res = x;
-          }
-        });
-        if (found)
+        auto candidate = construct_chain(start, 0, i);
+        if (candidate.second == h) {
+          res = candidate.first;
           return true;
+        }
+        //bool found = false;
+        //construct_chain(start, 0, [&](std::uint64_t x, const Hash& g) {
+          //if (g == h) {
+            //found = true;
+            //res = x;
+          //}
+        //});
+        //if (found)
+          //return true;
       }
     }
     return false;

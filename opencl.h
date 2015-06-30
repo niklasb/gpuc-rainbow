@@ -36,7 +36,7 @@ class OpenCLApp {
 
   void print_build_log(cl::Program prog) {
     std::string build_log = prog.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-    if (build_log[0]) {
+    if (!build_log.empty()) {
       std::cout << "BUILD LOG" << std::endl << build_log << std::endl;
     }
   }

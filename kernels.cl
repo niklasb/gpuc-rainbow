@@ -4,6 +4,7 @@ struct RTParams {
     ulong num_strings;
     int chain_len;
     int table_index;
+    /*__global ulong *dbg;*/
 };
 #define PARAMS const struct RTParams*
 
@@ -41,9 +42,10 @@ int build_string(PARAMS params, ulong n, uint* buf)
 }
 
 void hash_from_index(PARAMS params, ulong idx, uint* hash) {
-  uint buf[16];
+  uint buf[4];
   int len = build_string(params, idx, buf);
-  return compute_hash(buf, len, hash);
+  compute_hash(buf, len, hash);
+  return;
 }
 
 ulong reduce(PARAMS params, const uint* hash, ulong round) {
@@ -92,6 +94,7 @@ __kernel void generate_chains(
     int alphabet_size,
     __global ulong2 *out,
     int block_size
+    /*,__global ulong *dbg*/
     )
 {
   struct RTParams params;
@@ -107,7 +110,9 @@ __kernel void generate_chains(
   /*out[get_global_id(0)] = (ulong2){end, start};*/
   ulong lo = offset + get_global_id(0) * block_size;
   for (ulong start = lo; start < min(hi, lo + block_size); ++start) {
+    /*params.dbg = dbg + start - offset;*/
     ulong end = construct_chain_from_value(&params, start, 0, chain_len);
+    /*ulong end = 2;*/
     out[start - offset] = (ulong2){end, start};
   }
 }
