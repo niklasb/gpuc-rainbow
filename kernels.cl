@@ -116,3 +116,36 @@ __kernel void generate_chains(
     out[start - offset] = (ulong2){end, start};
   }
 }
+
+__kernel void compute_endpoints(
+    const __global ulong *in,
+    __global ulong2 *out,
+    ulong num_strings,
+    int chain_len,
+    int table_index,
+    __constant uint* alphabet,
+    int alphabet_size,
+    __global ulong2 *out,
+    int block_size
+    /*,__global ulong *dbg*/
+    )
+{
+  struct RTParams params;
+  params.num_strings = num_strings;
+  params.chain_len = chain_len;
+  params.table_index = table_index;
+  params.alphabet = alphabet;
+  params.alphabet_size = alphabet_size;
+
+  /*ulong start = offset + get_global_id(0);*/
+  /*if (start>=hi)return;*/
+  /*ulong end = construct_chain_from_value(&params, start, 0, chain_len);*/
+  /*out[get_global_id(0)] = (ulong2){end, start};*/
+  ulong lo = offset + get_global_id(0) * block_size;
+  for (ulong start = lo; start < min(hi, lo + block_size); ++start) {
+    /*params.dbg = dbg + start - offset;*/
+    ulong end = construct_chain_from_value(&params, start, 0, chain_len);
+    /*ulong end = 2;*/
+    out[start - offset] = (ulong2){end, start};
+  }
+}
