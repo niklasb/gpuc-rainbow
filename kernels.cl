@@ -13,14 +13,15 @@ void hash_from_index(PARAMS params, ulong idx, uint* hash);
 ulong reduce(PARAMS params, const uint* hash, ulong round);
 ulong construct_chain_from_hash(
     PARAMS params,
-    const uint* start_hash,
+    uint* start_hash,
     int start_iteration,
     int end_iteration);
 ulong construct_chain_from_value(
     PARAMS params,
     ulong start_value,
     int start_iteration,
-    int end_iteration);
+    int end_iteration,
+    uint* hash);
 
 int build_string(PARAMS params, ulong n, uint* buf)
 {
@@ -57,18 +58,14 @@ ulong reduce(PARAMS params, const uint* hash, ulong round) {
 
 ulong construct_chain_from_hash(
     PARAMS params,
-    const uint* start_hash,
+    uint* hash,
     int start_iteration,
     int end_iteration)
 {
-  uint h[HASH_SIZE];
-  for (int i = 0; i < HASH_SIZE; ++i)
-    h[i] = start_hash[i];
   ulong x;
   for (int i = start_iteration; i < end_iteration; ++i) {
-    x = reduce(params, h, i);
-    if (i < end_iteration - 1)
-      hash_from_index(params, x, h);
+    x = reduce(params, hash, i);
+    hash_from_index(params, x, hash);
   }
   return x;
 }
@@ -77,11 +74,14 @@ ulong construct_chain_from_value(
     PARAMS params,
     ulong start_value,
     int start_iteration,
-    int end_iteration)
+    int end_iteration,
+    uint *hash)
 {
-  uint h[HASH_SIZE];
-  hash_from_index(params, start_value, h);
-  return construct_chain_from_hash(params, h, start_iteration, end_iteration);
+  hash_from_index(params, start_value, hash);
+  if (start_iteration == end_iteration)
+    return start_value;
+  return construct_chain_from_hash(
+      params, hash, start_iteration, end_iteration);
 }
 
 __kernel void generate_chains(
@@ -109,24 +109,26 @@ __kernel void generate_chains(
   /*ulong end = construct_chain_from_value(&params, start, 0, chain_len);*/
   /*out[get_global_id(0)] = (ulong2){end, start};*/
   ulong lo = offset + get_global_id(0) * block_size;
+  uint hash[HASH_SIZE];
   for (ulong start = lo; start < min(hi, lo + block_size); ++start) {
     /*params.dbg = dbg + start - offset;*/
-    ulong end = construct_chain_from_value(&params, start, 0, chain_len);
+    ulong end = construct_chain_from_value(&params, start, 0, chain_len, hash);
     /*ulong end = 2;*/
     out[start - offset] = (ulong2){end, start};
   }
 }
 
+// total: queries * t
 __kernel void compute_endpoints(
-    const __global ulong *in,
-    __global ulong2 *out,
+    const __global ulong *queries,
+    __global ulong3 *out,
+    ulong offset,
+    ulong hi,
     ulong num_strings,
     int chain_len,
     int table_index,
     __constant uint* alphabet,
-    int alphabet_size,
-    __global ulong2 *out,
-    int block_size
+    int alphabet_size
     /*,__global ulong *dbg*/
     )
 {
@@ -137,15 +139,15 @@ __kernel void compute_endpoints(
   params.alphabet = alphabet;
   params.alphabet_size = alphabet_size;
 
-  /*ulong start = offset + get_global_id(0);*/
-  /*if (start>=hi)return;*/
-  /*ulong end = construct_chain_from_value(&params, start, 0, chain_len);*/
-  /*out[get_global_id(0)] = (ulong2){end, start};*/
-  ulong lo = offset + get_global_id(0) * block_size;
-  for (ulong start = lo; start < min(hi, lo + block_size); ++start) {
-    /*params.dbg = dbg + start - offset;*/
-    ulong end = construct_chain_from_value(&params, start, 0, chain_len);
-    /*ulong end = 2;*/
-    out[start - offset] = (ulong2){end, start};
-  }
+  ulong id = offset + get_global_id(0);
+  if (id >= hi)
+    return;
+
+  int start_position = id / chain_len;
+  int query_idx = id % chain_len;
+
+  ulong start = queries[query_idx];
+  uint hash[HASH_SIZE];
+  ulong end = construct_chain_from_value(&params, start, 0, chain_len, hash);
+  out[id - offset] = (ulong3){end, query_idx, start_position};
 }
