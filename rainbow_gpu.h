@@ -177,6 +177,13 @@ struct GPUImplementation {
       });
     }
 
+    std::vector<std::array<std::uint64_t,4>> lookup(hi);
+    cl.read_sync(lookup_buf, lookup.data(), lookup.size());
+    stats.add_timing("time_query_sort", [&]() {
+      std::sort(std::begin(lookup), std::end(lookup));
+    });
+    cl.write_async(lookup_buf, lookup.data(), lookup.size());
+
     auto result_buf = cl.alloc<std::uint64_t>(queries.size(), CL_MEM_WRITE_ONLY);
     fill_ulong(result_buf, queries.size(), NOT_FOUND);
     auto rt_buf = cl.alloc<RainbowTable::Entry>(rt.table.size(), CL_MEM_READ_ONLY);
