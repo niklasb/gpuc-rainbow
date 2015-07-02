@@ -53,3 +53,5 @@ struct RainbowTable {
     f.read((char*)&table[0], num * sizeof table[0]);
   }
 };
+
+const std::uint64_t NOT_FOUND = -1;

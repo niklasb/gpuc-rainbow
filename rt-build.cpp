@@ -297,14 +297,20 @@ int main(int argc, char* argv[]) {
     std::mt19937 gen(seed);
     cout << "Estimating coverage using " << samples << " samples" << endl;
     stats.add_timing("time_coverage_sampling", [&]() {
-      utils::Progress progress(samples);
+      vector<Hash> queries;
+      Hash h;
       for (uint64_t i = 0; i < samples; ++i) {
-        progress.report(i);
         uint64_t sample = (((uint64_t)gen() << 32) | gen()) % params.num_strings;
-        if (cpu.is_covered(sample, rt))
-          found++;
+        cpu.compute_hash(sample, h);
+        queries.push_back(h);
       }
-      progress.finish();
+      if (use_opencl) {
+        for (auto x: gpu.lookup(rt, queries))
+          found += x != NOT_FOUND;
+      } else {
+        for (auto x: cpu.lookup(rt, queries))
+          found += x != NOT_FOUND;
+      }
     });
     cout << "Coverage: " << setprecision(4) << fixed
         << (100.*found/samples) << "%" << endl;

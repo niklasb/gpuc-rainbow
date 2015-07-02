@@ -107,7 +107,7 @@ struct CPUImplementation {
     });
   }
 
-  bool lookup_single(const Hash& h, const RainbowTable& rt, std::uint64_t& res) {
+  std::uint64_t lookup_single(const RainbowTable& rt, const Hash& h) {
     for (int i = 0; i < p.chain_len; ++i) {
       std::uint64_t endpoint = construct_chain(h, i, p.chain_len).first;
       auto l = std::lower_bound(std::begin(rt.table), std::end(rt.table),
@@ -117,45 +117,24 @@ struct CPUImplementation {
       for (auto it = l; it != r; ++it) {
         std::uint64_t start = it->second;
         auto candidate = construct_chain(start, 0, i);
-        if (candidate.second == h) {
-          res = candidate.first;
-          return true;
-        }
-        //bool found = false;
-        //construct_chain(start, 0, [&](std::uint64_t x, const Hash& g) {
-          //if (g == h) {
-            //found = true;
-            //res = x;
-          //}
-        //});
-        //if (found)
-          //return true;
+        if (candidate.second == h)
+          return candidate.first;
       }
     }
-    return false;
+    return NOT_FOUND;
   }
 
-  std::vector<std::pair<bool, std::uint64_t>> lookup(
-      const std::vector<Hash>& queries,
-      const RainbowTable& table)
+  std::vector<std::uint64_t> lookup(
+      const RainbowTable& table,
+      const std::vector<Hash>& queries)
   {
-    std::vector<std::pair<bool, std::uint64_t>> res;
-    for (const Hash& h: queries) {
-      std::uint64_t x = 0;
-      bool found = lookup_single(h, table, x);
-      res.emplace_back(found, x);
+    std::vector<std::uint64_t> res;
+    utils::Progress prog(queries.size());
+    for (size_t i = 0; i < queries.size(); ++i) {
+      prog.report(i);
+      res.push_back(lookup_single(table, queries[i]));
     }
+    prog.finish();
     return res;
-  }
-
-  bool is_covered(std::uint64_t x, const RainbowTable& r) {
-    Hash h;
-    compute_hash(x, h);
-    std::uint64_t res;
-    if (lookup_single(h, r, res)) {
-      assert(res == x);
-      return true;
-    }
-    return false;
   }
 };

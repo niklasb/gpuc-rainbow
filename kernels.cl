@@ -22,6 +22,7 @@ ulong construct_chain_from_value(
     int start_iteration,
     int end_iteration,
     uint* hash);
+ulong rt_lookup(const __global ulong2 *rt, ulong rt_size, ulong endpoint);
 
 int build_string(PARAMS params, ulong n, uint* buf)
 {
@@ -43,7 +44,7 @@ int build_string(PARAMS params, ulong n, uint* buf)
 }
 
 void hash_from_index(PARAMS params, ulong idx, uint* hash) {
-  uint buf[4];
+  uint buf[16]; // TODO why does everything break with buf[4]?
   int len = build_string(params, idx, buf);
   compute_hash(buf, len, hash);
   return;
@@ -118,18 +119,79 @@ __kernel void generate_chains(
   }
 }
 
-// total: queries * t
 __kernel void compute_endpoints(
-    const __global ulong *queries,
-    __global ulong3 *out,
     ulong offset,
     ulong hi,
     ulong num_strings,
     int chain_len,
     int table_index,
     __constant uint* alphabet,
-    int alphabet_size
+    int alphabet_size,
+    const __global uint *queries,
+    int num_queries,
+    __global ulong4 *out
     /*,__global ulong *dbg*/
+    )
+{
+  ulong id = offset + get_global_id(0);
+  if (id >= hi)
+    return;
+
+  struct RTParams params;
+  params.num_strings = num_strings;
+  params.chain_len = chain_len;
+  params.table_index = table_index;
+  params.alphabet = alphabet;
+  params.alphabet_size = alphabet_size;
+
+  int start_iteration = id / num_queries;
+  int query_idx = id % num_queries;
+  uint hash[HASH_SIZE];
+  for (int i = 0; i < HASH_SIZE; ++i)
+    hash[i] = queries[query_idx * HASH_SIZE + i];
+  ulong end = construct_chain_from_hash(&params, hash, start_iteration, chain_len);
+  out[id] = (ulong4){end, start_iteration, query_idx, 0};
+}
+
+#define NOT_FOUND (ulong)(-1)
+
+ulong rt_lookup(const __global ulong2 *rt, ulong rt_size, ulong endpoint) {
+  ulong lo = 0, hi = rt_size;
+  while (lo < hi) {
+    ulong mid = (lo + hi) / 2;
+    if (rt[mid][0] >= endpoint)
+      hi = mid;
+    else
+      lo = mid + 1;
+  }
+  return (lo < rt_size && rt[lo][0] == endpoint) ? rt[lo][1] : NOT_FOUND;
+}
+
+__kernel void fill_ulong(
+    __global ulong *buf,
+    ulong size,
+    ulong val
+    )
+{
+  ulong idx = get_global_id(0);
+  if (idx < size)
+    buf[idx] = val;
+}
+
+__kernel void lookup_endpoints(
+    ulong offset,
+    ulong hi,
+    ulong num_strings,
+    int chain_len,
+    int table_index,
+    __constant uint* alphabet,
+    int alphabet_size,
+    const __global uint *queries,
+    const __global ulong4 *lookup,
+    __global ulong *results,
+    const __global ulong2 *rt,
+    ulong rt_size
+    //,__global ulong *dbg
     )
 {
   struct RTParams params;
@@ -143,11 +205,20 @@ __kernel void compute_endpoints(
   if (id >= hi)
     return;
 
-  int start_position = id / chain_len;
-  int query_idx = id % chain_len;
+  ulong endpoint = lookup[id][0];
+  int start_iteration = lookup[id][1];
+  int query_idx = lookup[id][2];
 
-  ulong start = queries[query_idx];
-  uint hash[HASH_SIZE];
-  ulong end = construct_chain_from_value(&params, start, 0, chain_len, hash);
-  out[id - offset] = (ulong3){end, query_idx, start_position};
+  // we assume perfect rainbow table here!
+  ulong start = rt_lookup(rt, rt_size, endpoint);
+  if (start != NOT_FOUND) {
+    uint hash[HASH_SIZE];
+    ulong candidate = construct_chain_from_value(
+        &params, start, 0, start_iteration, hash);
+    uint diff = 0;
+    for (int i = 0; i < HASH_SIZE; ++i)
+      diff |= hash[i] ^ queries[query_idx * HASH_SIZE + i];
+    if (!diff)
+      results[query_idx] = candidate;
+  }
 }
