@@ -22,7 +22,7 @@ ulong construct_chain_from_value(
     int start_iteration,
     int end_iteration,
     uint* hash);
-ulong rt_lookup(const __global ulong2 *rt, ulong rt_size, ulong endpoint);
+ulong rt_lookup(const __global ulong2 *rt, ulong lo, ulong hi, ulong endpoint);
 
 int build_string(PARAMS params, ulong n, uint* buf)
 {
@@ -155,8 +155,8 @@ __kernel void compute_endpoints(
 
 #define NOT_FOUND (ulong)(-1)
 
-ulong rt_lookup(const __global ulong2 *rt, ulong rt_size, ulong endpoint) {
-  ulong lo = 0, hi = rt_size;
+ulong rt_lookup(const __global ulong2 *rt, ulong lo, ulong hi_, ulong endpoint) {
+  ulong hi = hi_;
   while (lo < hi) {
     ulong mid = (lo + hi) / 2;
     if (rt[mid][0] >= endpoint)
@@ -164,7 +164,7 @@ ulong rt_lookup(const __global ulong2 *rt, ulong rt_size, ulong endpoint) {
     else
       lo = mid + 1;
   }
-  return (lo < rt_size && rt[lo][0] == endpoint) ? rt[lo][1] : NOT_FOUND;
+  return (lo < hi_ && rt[lo][0] == endpoint) ? rt[lo][1] : NOT_FOUND;
 }
 
 __kernel void fill_ulong(
@@ -190,7 +190,7 @@ __kernel void lookup_endpoints(
     const __global ulong4 *lookup,
     __global ulong *results,
     const __global ulong2 *rt,
-    ulong rt_size
+    ulong rt_lo, ulong rt_hi
     //,__global ulong *dbg
     )
 {
@@ -209,8 +209,9 @@ __kernel void lookup_endpoints(
   int start_iteration = lookup[id][1];
   int query_idx = lookup[id][2];
 
+
   // we assume perfect rainbow table here!
-  ulong start = rt_lookup(rt, rt_size, endpoint);
+  ulong start = rt_lookup(rt, rt_lo, rt_hi, endpoint);
   if (start != NOT_FOUND) {
     uint hash[HASH_SIZE];
     ulong candidate = construct_chain_from_value(

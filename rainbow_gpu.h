@@ -199,7 +199,8 @@ struct GPUImplementation {
     kernel_lookup_endpoints.setArg(8, lookup_buf);
     kernel_lookup_endpoints.setArg(9, result_buf);
     kernel_lookup_endpoints.setArg(10, rt_buf);
-    kernel_lookup_endpoints.setArg(11, (cl_ulong)rt.table.size());
+    kernel_lookup_endpoints.setArg(11, (cl_ulong)0);
+    kernel_lookup_endpoints.setArg(12, (cl_ulong)rt.table.size());
     //kernel_lookup_endpoints.setArg(12, debug_buf);
 
     stats.add_timing("time_lookup_endpoints", [&]() {
@@ -207,7 +208,23 @@ struct GPUImplementation {
       for (uint64_t offset = 0; offset < hi; offset += global_size) {
         progress.report(offset);
         kernel_lookup_endpoints.setArg(0, (cl_ulong)offset);
+
         size_t count = std::min(global_size, hi - offset);
+
+        /*
+        std::array<std::uint64_t, 4> first, last;
+        cl.read_sync(lookup_buf, &first, 1, offset);
+        cl.read_sync(lookup_buf, &last, 1, offset + count - 1);
+        auto lo = std::lower_bound(std::begin(rt.table), std::end(rt.table),
+            std::make_pair(first[0], std::uint64_t{0}));
+        auto hi = std::upper_bound(std::begin(rt.table), std::end(rt.table),
+            std::make_pair(last[0], std::numeric_limits<std::uint64_t>::max()));
+        //std::cout << (lo - std::begin(rt.table)) << " - ";
+        //std::cout << (hi - std::begin(rt.table)) << std::endl;
+        kernel_lookup_endpoints.setArg(11, (cl_ulong)(lo - std::begin(rt.table)));
+        kernel_lookup_endpoints.setArg(12, (cl_ulong)(hi - std::begin(rt.table)));
+        */
+
         cl.run_kernel(
             kernel_lookup_endpoints,
             cl::NDRange((count + local_size - 1) / local_size * local_size),
