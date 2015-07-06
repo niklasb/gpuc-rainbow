@@ -16,7 +16,7 @@ double get_time() {
 }
 
 Progress::Progress(uint64_t total, double interval)
-  : total(total), interval(interval), last(-(1.0/0))
+  : total(total), interval(interval), last(-(1./0.))
 {
   report(0);
 }

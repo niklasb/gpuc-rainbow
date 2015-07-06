@@ -1,3 +1,4 @@
+#line 2 "kernels.cl"
 struct RTParams {
     __constant uint* alphabet;
     int alphabet_size;
@@ -159,12 +160,12 @@ ulong rt_lookup(const __global ulong2 *rt, ulong lo, ulong hi_, ulong endpoint) 
   ulong hi = hi_;
   while (lo < hi) {
     ulong mid = (lo + hi) / 2;
-    if (rt[mid][0] >= endpoint)
+    if (rt[mid].x >= endpoint)
       hi = mid;
     else
       lo = mid + 1;
   }
-  return (lo < hi_ && rt[lo][0] == endpoint) ? rt[lo][1] : NOT_FOUND;
+  return (lo < hi_ && rt[lo].x == endpoint) ? rt[lo].y : NOT_FOUND;
 }
 
 __kernel void fill_ulong(
@@ -205,9 +206,9 @@ __kernel void lookup_endpoints(
   if (id >= hi)
     return;
 
-  ulong endpoint = lookup[id][0];
-  int start_iteration = lookup[id][1];
-  int query_idx = lookup[id][2];
+  ulong endpoint = lookup[id].x;
+  int start_iteration = lookup[id].y;
+  int query_idx = lookup[id].z;
 
 
   // we assume perfect rainbow table here!

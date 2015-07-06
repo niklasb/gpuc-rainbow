@@ -203,7 +203,7 @@ void parse_opts(int argc, char *argv[]) {
     usage(argv[0]);
 }
 
-int main(int argc, char* argv[]) {
+int main_(int argc, char* argv[]) {
   parse_opts(argc, argv);
 
   params.num_strings = 0;
@@ -246,6 +246,30 @@ int main(int argc, char* argv[]) {
       local_size, global_size, block_size);
   if (use_opencl) {
     cl.print_cl_info();
+  }
+
+  {
+  const int N = 10000101;
+  cl::Buffer buf = cl.alloc<uint64_t>(N);
+  vector<uint64_t> x(N), y(N);
+  for (int i = 0; i < N; ++i)
+    x[i] = rand()%1000;
+  //for (auto a: x) cout << a << " "; cout << endl;
+  cl.write_sync(buf, x.data(), N);
+
+  double t0 = utils::get_time();
+  sort(begin(x),end(x));
+  double t1 = utils::get_time();
+  gpu.sort(buf, sizeof(uint64_t), N, 64/4, "ulong", "((x)>>(b))&1");
+  cl.finish_queue();
+  double t2 = utils::get_time();
+  cout << (t1-t0) << " " <<(t2-t1) << endl;
+
+  cl.read_sync(buf, y.data(), N);
+  //for (auto a: x) cout << a << " "; cout << endl;
+  //for (auto a: y) cout << a << " "; cout << endl;
+  assert(x == y);
+  return 0;
   }
 
   if (use_opencl) {
@@ -319,5 +343,15 @@ int main(int argc, char* argv[]) {
   cout << "STATS" << endl;
   for (auto& it : stats.stats) {
     cout << "  " << it.first << " = " << it.second << endl;
+  }
+  return 0;
+}
+
+int main(int argc, char** argv) {
+  try {
+    return main_(argc, argv);
+  } catch (cl::Error err) {
+    cerr << "OpenCL exception: " << err.what() << " (" << err.err() << ")" << endl;
+    return EXIT_FAILURE;
   }
 }

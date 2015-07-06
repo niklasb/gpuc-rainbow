@@ -1,3 +1,4 @@
+#line 2 "md5.cl"
 // adapted from http://www2.htw-dresden.de/~s64599/6.%20Semester/Informationssicherheit/Prakt/Prakt01/john-1.7.9-jumbo-7/src/opencl/md5_kernel.cl
 
 uint4 md5_compress(uint *buf, uint4 state);

@@ -34,6 +34,18 @@ class OpenCLApp {
         buf, blocking, offset * sizeof(T), num * sizeof(T), ptr, nullptr, nullptr);
   }
 
+  template<typename T>
+  void copy_(
+      cl::Buffer a, cl::Buffer b,
+      size_t num, size_t offset_a=0, size_t offset_b=0)
+  {
+    if (num == 0)
+      return;
+    queue.enqueueCopyBuffer(
+        a, b, offset_a * sizeof(T), offset_b * sizeof(T),
+        num * sizeof(T), nullptr, nullptr);
+  }
+
   void print_build_log(cl::Program prog) {
     std::string build_log = prog.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
     if (!build_log.empty()) {
@@ -48,7 +60,7 @@ class OpenCLApp {
     for (auto& p : platforms) {
       std::vector<cl::Device> platform_devs;
       p.getDevices(CL_DEVICE_TYPE_ALL, &platform_devs);
-      copy(begin(platform_devs), end(platform_devs), back_inserter(devices));
+      std::copy(begin(platform_devs), end(platform_devs), back_inserter(devices));
     }
     assert(!devices.empty());
     device = devices[0];
@@ -150,11 +162,20 @@ public:
     read(buf, true, ptr, num, offset);
   }
 
+  template<typename T>
+  void copy(
+      const cl::Buffer& a, const cl::Buffer& b,
+      size_t num, size_t offset_a=0, size_t offset_b=0)
+  {
+    copy_<T>(a, b, num, offset_a, offset_b);
+  }
+
   void finish_queue() {
     queue.finish();
   }
 
   void run_kernel(const cl::Kernel& kernel, const cl::NDRange& global, const cl::NDRange& local) {
+    assert(global[0] % local[0] == 0);
     queue.enqueueNDRangeKernel(kernel, cl::NullRange, global, local, nullptr, nullptr);
   }
 };
