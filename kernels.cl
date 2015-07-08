@@ -8,6 +8,7 @@ struct RTParams {
     /*__global ulong *dbg;*/
 };
 #define PARAMS const struct RTParams*
+#define MAGIC_MANGLER ((ulong)1337133713371337)
 
 int build_string(PARAMS params, ulong n, uint* buf);
 void hash_from_index(PARAMS params, ulong idx, uint* hash);
@@ -55,7 +56,7 @@ ulong reduce(PARAMS params, const uint* hash, ulong round) {
   ulong x = 0;
   for (int i = 0; i < 4*HASH_SIZE; ++i)
     x = (x * 0x100 + GETCHAR(hash, i)) % params->num_strings;
-  return (x + round + params->table_index) % params->num_strings;
+  return (x + round + MAGIC_MANGLER * params->table_index) % params->num_strings;
 }
 
 ulong construct_chain_from_hash(

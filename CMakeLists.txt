@@ -40,13 +40,20 @@ endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -std=c++0x -march=native -mtune=native -g")
 
 file(GLOB SOURCES *.cpp)
-list(REMOVE_ITEM SOURCES rt-build.cpp)
-list(REMOVE_ITEM SOURCES rt-lookup.cpp)
+list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/rt-build.cpp)
+list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/rt-lookup.cpp)
 add_executable(rt-build
   rt-build.cpp
+  ${SOURCES}
+  ${CL_COMPILED_SOURCES}
+)
+add_executable(rt-lookup
+  rt-lookup.cpp
   ${SOURCES}
   ${CL_COMPILED_SOURCES}
 )
 
 target_link_libraries(rt-build ${OPENCL_LIBRARIES})
 target_link_libraries(rt-build ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(rt-lookup ${OPENCL_LIBRARIES})
+target_link_libraries(rt-lookup ${CMAKE_THREAD_LIBS_INIT})

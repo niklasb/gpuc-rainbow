@@ -27,36 +27,43 @@ struct CPUImplementation {
     : p(p), stats(stats)
   { }
 
-  void string_from_index(std::uint64_t n, unsigned char* buf, std::uint64_t* len) {
+  void string_from_index(std::uint64_t n, unsigned char* buf, std::uint64_t& len) {
     std::uint64_t base = p.alphabet.size();
     std::uint64_t offset = 0;
     std::uint64_t num = 1;
-    *len = 0;
+    len = 0;
     while (offset + num <= n) {
       offset += num;
       num *= base;
-      (*len)++;
+      len++;
     }
     n -= offset;
-    for (int i = 0; i < *len; ++i) {
-      buf[*len - i - 1] = p.alphabet[n%base];
+    for (int i = 0; i < len; ++i) {
+      buf[len - i - 1] = p.alphabet[n%base];
       n/=base;
     }
   }
 
-  std::uint64_t reduce(const Hash& h, std::uint64_t round)
-  {
+  std::string string_from_index(std::uint64_t n) {
+    // TODO overflow?
+    unsigned char buf[20];
+    uint64_t len;
+    string_from_index(n, buf, len);
+    return std::string((char*)buf, (char*)buf + len);
+  }
+
+  std::uint64_t reduce(const Hash& h, std::uint64_t round) {
     std::uint64_t x = 0;
     for (std::uint64_t i = 0; i < h.size(); ++i) {
       x = ((std::uint64_t)x * 0x100 + h[i]) % p.num_strings;
     }
-    return (x + round + p.table_index) % p.num_strings;
+    return (x + round + MAGIC_MANGLER*p.table_index) % p.num_strings;
   }
 
   void compute_hash(std::uint64_t x, Hash& h) {
     unsigned char buf[16];
     std::uint64_t len;
-    string_from_index(x, buf, &len);
+    string_from_index(x, buf, len);
     ::compute_hash(buf, len, h);
   }
 

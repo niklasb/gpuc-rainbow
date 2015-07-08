@@ -177,8 +177,11 @@ struct GPUImplementation {
         //std::cout << "count="<< count << " bufsize=" << bufsize << " total=" << total << std::endl;
         while (total + count > bufsize) {
           auto new_chain_buf = cl.alloc<C>(2*bufsize);
-          cl.copy<C>(chain_buf, new_chain_buf, bufsize);
           cl.finish_queue();
+          stats.add_timing("time_realloc", [&]() {
+            cl.copy<C>(chain_buf, new_chain_buf, bufsize);
+            cl.finish_queue();
+          });
           chain_buf = new_chain_buf;
           bufsize *= 2;
         }

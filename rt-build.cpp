@@ -34,19 +34,19 @@ void usage(char *argv0) {
        << "  -o       Use OpenCL to accelerate the table generation" << endl
        << "  -a FLOAT Floating point value between 0 and 1, indicating the fraction" << endl
        << "           of passwords used as initial values" << endl
-       << "  -t INT   Positive integer value specifying the rainbow construct_chain" << endl
+       << "  -t INT   Positive integer value specifying the rainbow chain" << endl
        << "           length" << endl
        << "  -s INT   Integer value specifying the number of samples to use" << endl
        << "           for coverage analysis. 0 means no coverage is measured" << endl
        << "  -i INT   Table index in case multiple tables are generated" << endl
-       << "  -r       Specify random seed (defaults to constant value)" << endl
+       << "  -r INT   Specify random seed (defaults to constant value)" << endl
        << "  -v       OpenCL only: Verify results using CPU implementation" << endl
        << "  -b INT   OpenCL only: block size" << endl
        << "  -l INT   OpenCL only: local group size" << endl
        << "  -g INT   OpenCL only: global group size" << endl
        << endl
        << "EXAMPLES" << endl
-       << "  " << argv0 << " -t 7 abcdefghijklmnopqrstuvwxyz0123456789" << endl;
+       << "  " << argv0 << " -o 7 abcdefghijklmnopqrstuvwxyz0123456789 outputfile" << endl;
   exit(EXIT_FAILURE);
 }
 
@@ -60,7 +60,7 @@ RainbowTableParams params;
 string outfile;
 bool verify = 0;
 uint64_t block_size = 1;
-OpenCLConfig clcfg { 1<<15, 1<<5 };
+OpenCLConfig clcfg { 1<<17, 1<<8 };
 
 const int default_chain_len = 1000;
 const int default_table_index = 0;
@@ -215,13 +215,14 @@ int main_(int argc, char* argv[]) {
     cur *= params.alphabet.size();
   }
 
-  cout << setprecision(2) << fixed;
+  cout << setprecision(4) << fixed;
   cout << "PARAMETERS" << endl;
   cout << "  string_len  = " << max_string_len << endl;
   cout << "  alphabet    = " << params.alphabet << endl;
   cout << "  num_strings = " << params.num_strings << endl;
   cout << "  alpha       = " << alpha << endl;
   cout << "  t           = " << params.chain_len << endl;
+  cout << "  table_index = " << params.table_index << endl;
   cout << "  rand seed   = " << seed << endl;
   if (samples)
     cout << "  cov samples = " << samples << endl;
@@ -255,45 +256,12 @@ int main_(int argc, char* argv[]) {
     cpu.build(rt);
 
   //ocl_primitives::test_filter(cl, clcfg); return 0;
+  cout << setprecision(4);
   cout << "Result: " << rt.table.size() << " unique chains (~"
-       << setprecision(2) << fixed << (100. * rt.table.size() / params.num_strings)
+       << (100. * rt.table.size() / params.num_strings)
        << "% of search space)" << endl;
 
   if (samples) {
-    //cout << "Measuring exact coverage" << endl;
-    //unordered_set<uint64_t> covered;
-    //stats.add_timing("time_coverage_exact", [&]() {
-      //utils::Progress progress(rt.table.size());
-      //for (size_t i = 0; i < rt.table.size(); ++i) {
-        //auto& entry = rt.table[i];
-        //progress.report(i);
-        ////cout << "start=" << entry.second << endl;
-        //[>
-        //construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
-          //cout << x << " "; print_hash(h); cout << endl;
-        //});
-        //*/
-        //uint64_t endpoint = cpu.construct_chain(entry.second, 0, [&](uint64_t x, const Hash& h) {
-          //covered.insert(x);
-          ////assert(is_covered(x, rainbow_table));
-
-          //[>
-          //if (!is_covered(x, rainbow_table)) {
-            //Hash h;
-            //compute_hash(x, h);
-            //uint64_t res;
-            ////cout << "lookup "; print_hash(h); cout << endl;
-            ////cout << "lookup result=" << lookup(h, rainbow_table, res, true) << endl;
-            //cout << res<< endl;
-          //}
-          //*/
-        //});
-        //assert(endpoint == entry.first);
-      //}
-      //progress.finish();
-    //});
-    //cout << "Coverage: " << setprecision(4)
-        //<< fixed << (100.*covered.size()/params.num_strings) << "%" << endl;
     uint64_t found = 0;
     std::mt19937 gen(seed);
     cout << "Estimating coverage using " << samples << " samples" << endl;
@@ -305,20 +273,15 @@ int main_(int argc, char* argv[]) {
         cpu.compute_hash(sample, h);
         queries.push_back(h);
       }
-      if (use_opencl) {
-        for (auto x: gpu.lookup(rt, queries))
-          found += x != NOT_FOUND;
-      } else {
-        for (auto x: cpu.lookup(rt, queries))
-          found += x != NOT_FOUND;
-      }
+      for (auto x: use_opencl ? gpu.lookup(rt, queries) : cpu.lookup(rt, queries))
+        found += x != NOT_FOUND;
     });
-    cout << "Coverage: " << setprecision(4) << fixed
-        << (100.*found/samples) << "%" << endl;
+    cout << setprecision(4);
+    cout << "COVERAGE " << (100.*found/samples) << "%" << endl;
   }
 
   cout << "Writing table to disk" << endl;
-  stats.add_timing("time_write_to_disk", [&]() {
+  stats.add_timing("time_write_table", [&]() {
     cout << "  " << outfile + ".params" << endl;
     params.save_to_disk(outfile + ".params");
     cout << "  " << outfile << endl;
