@@ -179,3 +179,7 @@ public:
     queue.enqueueNDRangeKernel(kernel, cl::NullRange, global, local, nullptr, nullptr);
   }
 };
+
+struct OpenCLConfig {
+  uint32_t global_size, local_size;
+}

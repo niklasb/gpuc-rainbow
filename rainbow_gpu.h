@@ -25,7 +25,8 @@ struct GPUImplementation {
   bool verify;
   CPUImplementation& cpu;
   utils::Stats& stats;
-  uint64_t block_size, local_size, global_size;
+  uint64_t block_size;
+  const OpenCLConfig& clcfg;
   cl::Buffer alphabet_buf;
 
   cl::Kernel
@@ -40,12 +41,11 @@ struct GPUImplementation {
       CPUImplementation& cpu,
       utils::Stats& stats,
       bool verify,
-      uint64_t local_size,
-      uint64_t global_size,
+      const OpenCLConfig& clcfg,
       uint64_t block_size
       )
     : p(p), cl(cl), cpu(cpu), stats(stats), verify(verify)
-    , block_size(block_size), local_size(local_size), global_size(global_size)
+    , block_size(block_size), clcfg(clcfg)
   {
     auto prog = cl.build_program(std::vector<std::string> {
       ocl_code::md5_cl_str,
@@ -72,21 +72,31 @@ struct GPUImplementation {
     cl.write_sync<uint32_t>(out, local.data(), size);
   }
 
+  void run(cl::Kernel kernel, uint32_t size) {
+    cl.run_kernel(kernel,
+        cl::NDRange(utils::round_to_multiple(size, clcfg.local_size)),
+        cl::NDRange(clcfg.local_size));
+  }
+  void run(cl::Kernel kernel, uint64_t size) {
+    assert(size <= std::numeric_limits<std::uint32_t>::max());
+    run(kernel, (uint32_t)size);
+  }
+
   void sort(
-      cl::Buffer buf, int objsize, std::uint64_t bufsize,
+      cl::Buffer buf, int objsize, std::uint32_t bufsize,
       int bits,
       const std::string& type, const std::string& getbit
       )
   {
     assert(bufsize <= std::numeric_limits<std::uint32_t>::max());
-    size_t scan_count = (bufsize + 2*local_size - 1) / local_size * local_size;
+    uint32_t scan_count = utils::round_to_multiple(bufsize + clcfg.local_size, clcfg.local_size);
     auto offset_buf = cl.alloc<std::uint32_t>(scan_count);
     auto buf1 = buf;
     auto buf2 = cl.alloc<char>(objsize * bufsize);
     auto defines = std::string()
       + "#define GET_BIT(x, b) (" + getbit + ")\n"
       + "#define T " + type + "\n"
-      + "#define LOCAL_SIZE " + std::to_string(local_size) + "\n";
+      + "#define LOCAL_SIZE " + std::to_string(clcfg.local_size) + "\n";
     auto prog = cl.build_program(std::vector<std::string> {
       defines,
       ocl_code::radix_sort_cl_str
@@ -105,23 +115,13 @@ struct GPUImplementation {
       kernel_partition.setArg(1, buf2);
       kernel_partition.setArg(3, offset_buf);
 
-      for (uint64_t offset = 0; offset < scan_count; offset += global_size) {
+      for (uint32_t offset = 0; offset < scan_count; offset += clcfg.global_size) {
         kernel_write_bits.setArg(4, (cl_uint)offset);
-        uint64_t count = std::min(global_size, scan_count - offset);
-        cl.run_kernel(
-            kernel_write_bits,
-            cl::NDRange((count + local_size - 1) / local_size * local_size),
-            cl::NDRange(local_size));
+        uint32_t count = std::min(clcfg.global_size, scan_count - offset);
+        run(kernel_write_bits, count);
         cl.finish_queue();
       }
 
-      /*
-        kernel_write_bits.setArg(4, (cl_uint)0);
-        cl.run_kernel(
-            kernel_write_bits,
-            cl::NDRange(scan_count),
-            cl::NDRange(local_size));
-      */
       double t0 = utils::get_time();
       prefix_scan(offset_buf, offset_buf, scan_count);
       t += utils::get_time()-t0;
@@ -131,13 +131,10 @@ struct GPUImplementation {
       //int i = 0;
       //for (auto a: x) std::cout << (i++)<<":" << a << " "; std::cout << std::endl;
 
-      for (uint64_t offset = 0; offset < bufsize; offset += global_size) {
+      for (uint32_t offset = 0; offset < bufsize; offset += clcfg.global_size) {
         kernel_partition.setArg(4, (cl_uint)offset);
-        uint64_t count = std::min(global_size, bufsize - offset);
-        cl.run_kernel(
-            kernel_partition,
-            cl::NDRange((count + local_size - 1) / local_size * local_size),
-            cl::NDRange(local_size));
+        uint32_t count = std::min(clcfg.global_size, bufsize - offset);
+        run(kernel_partition, count);
         cl.finish_queue();
       }
       std::swap(buf1, buf2);
@@ -148,7 +145,7 @@ struct GPUImplementation {
   }
 
   void build(RainbowTable& rt) {
-    auto chain_buf = cl.alloc<cl_ulong>(2 * global_size * block_size);
+    auto chain_buf = cl.alloc<cl_ulong>(2 * clcfg.global_size * block_size);
     //auto debug_buf = cl.alloc<cl_ulong>(global_size * block_size);
 
     uint64_t lo = p.table_index * p.num_start_values;
@@ -167,17 +164,14 @@ struct GPUImplementation {
     rt.table.resize(p.num_start_values);
     stats.add_timing("time_generate", [&]() {
       utils::Progress progress(hi - lo);
-      for (uint64_t offset = lo; offset < hi; offset += block_size * global_size) {
+      for (uint64_t offset = lo; offset < hi; offset += block_size * clcfg.global_size) {
         progress.report(offset - lo);
         kernel_generate_chains.setArg(0, (cl_ulong)offset);
-        size_t count = std::min(block_size * global_size, hi - offset);
-        cl.run_kernel(
-            kernel_generate_chains,
-            cl::NDRange((count + local_size - 1) / local_size * local_size),
-            cl::NDRange(local_size));
+        uint64_t count = std::min(block_size * uint64_t{clcfg.global_size}, hi - offset);
+        run(kernel_generate_chains, count);
         cl.read_async(chain_buf, &rt.table[offset - lo], count);
         cl.finish_queue();
-        //std::vector<uint64_t> debug(global_size*block_size);
+        //std::vector<uint64_t> debug(clcfg.global_size*block_size);
         //cl.read_sync(debug_buf, debug.data(), count);
         //std::cout << std::endl;
         //for (int i = 0; i < count; ++i)
@@ -206,14 +200,11 @@ struct GPUImplementation {
       //assert(rt.table[i].first == i && rt.table[i].second == i);
   }
 
-  void fill_ulong(cl::Buffer buf, std::size_t size, std::uint64_t val) {
+  void fill_ulong(cl::Buffer buf, std::uint32_t size, std::uint64_t val) {
     kernel_fill_ulong.setArg(0, buf);
     kernel_fill_ulong.setArg(1, (cl_ulong)size);
     kernel_fill_ulong.setArg(2, (cl_ulong)val);
-    cl.run_kernel(
-        kernel_fill_ulong,
-        cl::NDRange((size + local_size - 1) / local_size * local_size),
-        cl::NDRange(local_size));
+    run(kernel_fill_ulong, size);
   }
 
   std::vector<std::uint64_t> lookup(
@@ -238,14 +229,11 @@ struct GPUImplementation {
 
     stats.add_timing("time_compute_endpoints", [&]() {
       utils::Progress progress(hi);
-      for (uint64_t offset = 0; offset < hi; offset += global_size) {
+      for (uint64_t offset = 0; offset < hi; offset += clcfg.global_size) {
         progress.report(offset);
         kernel_compute_endpoints.setArg(0, (cl_ulong)offset);
-        size_t count = std::min(global_size, hi - offset);
-        cl.run_kernel(
-            kernel_compute_endpoints,
-            cl::NDRange((count + local_size - 1) / local_size * local_size),
-            cl::NDRange(local_size));
+        size_t count = std::min(uint64_t{clcfg.global_size}, hi - offset);
+        run(kernel_compute_endpoints, count);
         cl.finish_queue();
       }
       progress.finish();
@@ -275,7 +263,8 @@ struct GPUImplementation {
     cl.write_async(lookup_buf, lookup.data(), lookup.size());
 
     auto result_buf = cl.alloc<std::uint64_t>(queries.size(), CL_MEM_WRITE_ONLY);
-    fill_ulong(result_buf, queries.size(), NOT_FOUND);
+    assert(queries.size() <= std::numeric_limits<uint32_t>::max());
+    fill_ulong(result_buf, (uint32_t)queries.size(), NOT_FOUND);
     auto rt_buf = cl.alloc<RainbowTable::Entry>(rt.table.size(), CL_MEM_READ_ONLY);
     cl.write_async(rt_buf, rt.table.data(), rt.table.size());
 
@@ -295,11 +284,11 @@ struct GPUImplementation {
 
     stats.add_timing("time_lookup_endpoints", [&]() {
       utils::Progress progress(hi);
-      for (uint64_t offset = 0; offset < hi; offset += global_size) {
+      for (uint64_t offset = 0; offset < hi; offset += clcfg.global_size) {
         progress.report(offset);
         kernel_lookup_endpoints.setArg(0, (cl_ulong)offset);
 
-        size_t count = std::min(global_size, hi - offset);
+        size_t count = std::min(uint64_t{clcfg.global_size}, hi - offset);
 
         /*
         std::array<std::uint64_t, 4> first, last;
@@ -315,10 +304,7 @@ struct GPUImplementation {
         kernel_lookup_endpoints.setArg(12, (cl_ulong)(hi - std::begin(rt.table)));
         */
 
-        cl.run_kernel(
-            kernel_lookup_endpoints,
-            cl::NDRange((count + local_size - 1) / local_size * local_size),
-            cl::NDRange(local_size));
+        run(kernel_lookup_endpoints, count);
         cl.finish_queue();
       }
       progress.finish();

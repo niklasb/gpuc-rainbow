@@ -29,4 +29,9 @@ struct Progress {
   void finish();
 };
 
+template <typename T>
+T round_to_multiple(T a, T b) {
+  return (a + b - 1) / b * b;
+}
+
 }

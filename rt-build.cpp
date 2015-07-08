@@ -12,6 +12,7 @@
 #include "rainbow_table.h"
 #include "rainbow_cpu.h"
 #include "rainbow_gpu.h"
+#include "bitonic_sort.h"
 #include "utils.h"
 
 using namespace std;
@@ -56,9 +57,8 @@ uint64_t seed = 0;
 RainbowTableParams params;
 string outfile;
 bool verify = 0;
-uint64_t local_size = 1<<8;
-uint64_t global_size = 1<<15;
-uint64_t block_size = 1<<5;
+uint64_t block_size = 1;
+OpenCLConfig clcfg { 1<<15, 1<<5 };
 
 const int default_chain_len = 1000;
 const int default_table_index = 0;
@@ -147,7 +147,7 @@ void parse_opts(int argc, char *argv[]) {
     }
     if (o == "-l") {
       if (i + 1 < argc) {
-        if (!(stringstream(argv[i+1]) >> local_size)) {
+        if (!(stringstream(argv[i+1]) >> clcfg.local_size)) {
           cout << "ERROR: local group size should be an integer" << endl;
         }
       } else {
@@ -158,7 +158,7 @@ void parse_opts(int argc, char *argv[]) {
     }
     if (o == "-g") {
       if (i + 1 < argc) {
-        if (!(stringstream(argv[i+1]) >> global_size)) {
+        if (!(stringstream(argv[i+1]) >> clcfg.global_size)) {
           cout << "ERROR: global group size should be an integer" << endl;
         }
       } else {
@@ -227,8 +227,8 @@ int main_(int argc, char* argv[]) {
   if (use_opencl) {
     cout << "  verify      = " << (verify?"yes":"no") << endl;
     cout << "  block size  = " << block_size << endl;
-    cout << "  local size  = " << local_size << endl;
-    cout << "  global size = " << global_size << endl;
+    cout << "  local size  = " << clcfg.local_size << endl;
+    cout << "  global size = " << clcfg.global_size << endl;
   }
 
   params.num_start_values =
@@ -242,8 +242,7 @@ int main_(int argc, char* argv[]) {
   utils::Stats stats;
   CPUImplementation cpu(params, stats);
   OpenCLApp cl;
-  GPUImplementation gpu(params, cl, cpu, stats, verify,
-      local_size, global_size, block_size);
+  GPUImplementation gpu(params, cl, cpu, stats, verify, clcfg, block_size);
   if (use_opencl) {
     cl.print_cl_info();
   }
@@ -260,7 +259,7 @@ int main_(int argc, char* argv[]) {
   double t0 = utils::get_time();
   sort(begin(x),end(x));
   double t1 = utils::get_time();
-  gpu.sort(buf, sizeof(uint64_t), N, 64/4, "ulong", "((x)>>(b))&1");
+  bitonic_sort(cl, clcfg, buf, N, "ulong", "x<y");
   cl.finish_queue();
   double t2 = utils::get_time();
   cout << (t1-t0) << " " <<(t2-t1) << endl;
