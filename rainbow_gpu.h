@@ -4,11 +4,13 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 #include "hash.h"
 #include "rainbow_table.h"
 #include "utils.h"
 #include "opencl.h"
+#include "filter.h"
 
 namespace ocl_code {
 #include "md5.cl.h"
@@ -145,7 +147,8 @@ struct GPUImplementation {
   }
 
   void build(RainbowTable& rt) {
-    auto chain_buf = cl.alloc<cl_ulong>(2 * clcfg.global_size * block_size);
+    using C = std::pair<cl_ulong,cl_ulong>;
+    //auto chain_buf = cl.alloc<cl_ulong>(2 * clcfg.global_size * block_size);
     //auto debug_buf = cl.alloc<cl_ulong>(global_size * block_size);
 
     uint64_t lo = p.table_index * p.num_start_values;
@@ -157,34 +160,68 @@ struct GPUImplementation {
     kernel_generate_chains.setArg(4, (cl_int)p.table_index);
     kernel_generate_chains.setArg(5, alphabet_buf);
     kernel_generate_chains.setArg(6, (cl_int)p.alphabet.size());
-    kernel_generate_chains.setArg(7, chain_buf);
     kernel_generate_chains.setArg(8, (cl_int)block_size);
-    //kernel_generate_chains.setArg(9, debug_buf);
+    kernel_generate_chains.setArg(9, (cl_ulong)0);
+    //kernel_generate_chains.setArg(10, debug_buf);
 
-    rt.table.resize(p.num_start_values);
+    uint64_t bufsize = 1<<20;
+    auto chain_buf = cl.alloc<C>(bufsize);
+    uint64_t chunk = block_size * clcfg.global_size;
+    uint64_t total = 0, last_compaction = chunk;
     stats.add_timing("time_generate", [&]() {
       utils::Progress progress(hi - lo);
-      for (uint64_t offset = lo; offset < hi; offset += block_size * clcfg.global_size) {
+      uint64_t iter = 0;
+      for (uint64_t offset = lo; offset < hi; offset += chunk) {
         progress.report(offset - lo);
+        uint64_t count = std::min(chunk, hi - offset);
+        //std::cout << "count="<< count << " bufsize=" << bufsize << " total=" << total << std::endl;
+        while (total + count > bufsize) {
+          auto new_chain_buf = cl.alloc<C>(2*bufsize);
+          cl.copy<C>(chain_buf, new_chain_buf, bufsize);
+          cl.finish_queue();
+          chain_buf = new_chain_buf;
+          bufsize *= 2;
+        }
+        //std::cout << "new bufsize=" << bufsize << std::endl;
+
         kernel_generate_chains.setArg(0, (cl_ulong)offset);
-        uint64_t count = std::min(block_size * uint64_t{clcfg.global_size}, hi - offset);
+        kernel_generate_chains.setArg(7, chain_buf);
+        kernel_generate_chains.setArg(9, (cl_ulong)total);
+
         run(kernel_generate_chains, count);
-        cl.read_async(chain_buf, &rt.table[offset - lo], count);
-        cl.finish_queue();
+        total += count;
+        if (total > 2*last_compaction || offset + chunk >= hi) {
+          //std::cout << "Compacting. Before: " << total << " After: ";
+          cl.finish_queue();
+          stats.add_timing("time_compaction", [&]() {
+            total = ocl_primitives::remove_dups_inplace(
+                cl, clcfg, chain_buf, sizeof(C), total, "ulong2", "x.x < y.x");
+            cl.finish_queue();
+          });
+          //std::cout << total << std::endl;
+          last_compaction = total;
+        }
         //std::vector<uint64_t> debug(clcfg.global_size*block_size);
         //cl.read_sync(debug_buf, debug.data(), count);
         //std::cout << std::endl;
         //for (int i = 0; i < count; ++i)
           //std::cout << debug[i] << " ";
         //std::cout << std::endl;
+
+        // responsiveness
+        cl.finish_queue();
+        usleep(1000);
       }
       progress.finish();
     });
+    rt.table.resize(total);
+    cl.read_sync(chain_buf, rt.table.data(), total);
 
-    stats.add_timing("time_sort", [&]() {
-      cpu.sort_and_uniqify(rt);
-    });
     if (verify) {
+      stats.add_timing("time_sort", [&]() {
+        cpu.sort_and_uniqify(rt);
+        assert(rt.table.size() == total);
+      });
       stats.add_timing("time_verify", [&]() {
         int i = 0;
         for (auto& it : rt.table) {
@@ -234,7 +271,9 @@ struct GPUImplementation {
         kernel_compute_endpoints.setArg(0, (cl_ulong)offset);
         size_t count = std::min(uint64_t{clcfg.global_size}, hi - offset);
         run(kernel_compute_endpoints, count);
+        // responsiveness
         cl.finish_queue();
+        usleep(1000);
       }
       progress.finish();
     });
@@ -305,7 +344,9 @@ struct GPUImplementation {
         */
 
         run(kernel_lookup_endpoints, count);
+        // responsiveness
         cl.finish_queue();
+        usleep(1000);
       }
       progress.finish();
     });

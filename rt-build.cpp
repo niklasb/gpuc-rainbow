@@ -13,6 +13,8 @@
 #include "rainbow_cpu.h"
 #include "rainbow_gpu.h"
 #include "bitonic_sort.h"
+#include "scan.h"
+#include "filter.h"
 #include "utils.h"
 
 using namespace std;
@@ -247,36 +249,12 @@ int main_(int argc, char* argv[]) {
     cl.print_cl_info();
   }
 
-  {
-  const int N = 10000101;
-  cl::Buffer buf = cl.alloc<uint64_t>(N);
-  vector<uint64_t> x(N), y(N);
-  for (int i = 0; i < N; ++i)
-    x[i] = rand()%1000;
-  //for (auto a: x) cout << a << " "; cout << endl;
-  cl.write_sync(buf, x.data(), N);
-
-  double t0 = utils::get_time();
-  sort(begin(x),end(x));
-  double t1 = utils::get_time();
-  bitonic_sort(cl, clcfg, buf, N, "ulong", "x<y");
-  cl.finish_queue();
-  double t2 = utils::get_time();
-  cout << (t1-t0) << " " <<(t2-t1) << endl;
-
-  cl.read_sync(buf, y.data(), N);
-  //for (auto a: x) cout << a << " "; cout << endl;
-  //for (auto a: y) cout << a << " "; cout << endl;
-  assert(x == y);
-  return 0;
-  }
-
-  if (use_opencl) {
+  if (use_opencl)
     gpu.build(rt);
-  } else {
+  else
     cpu.build(rt);
-  }
 
+  //ocl_primitives::test_filter(cl, clcfg); return 0;
   cout << "Result: " << rt.table.size() << " unique chains (~"
        << setprecision(2) << fixed << (100. * rt.table.size() / params.num_strings)
        << "% of search space)" << endl;
@@ -338,6 +316,14 @@ int main_(int argc, char* argv[]) {
     cout << "Coverage: " << setprecision(4) << fixed
         << (100.*found/samples) << "%" << endl;
   }
+
+  cout << "Writing table to disk" << endl;
+  stats.add_timing("time_write_to_disk", [&]() {
+    cout << "  " << outfile + ".params" << endl;
+    params.save_to_disk(outfile + ".params");
+    cout << "  " << outfile << endl;
+    rt.save_to_disk(outfile);
+  });
 
   cout << "STATS" << endl;
   for (auto& it : stats.stats) {

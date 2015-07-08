@@ -48,9 +48,11 @@ class OpenCLApp {
 
   void print_build_log(cl::Program prog) {
     std::string build_log = prog.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-    if (!build_log.empty()) {
-      std::cout << "BUILD LOG" << std::endl << build_log << std::endl;
-    }
+    size_t top = build_log.size();
+    while (top > 0 && (isspace(build_log[top - 1]) || !build_log[top - 1]))
+      top--;
+    if (top)
+      std::cout << "BUILD LOG" << std::endl << build_log.substr(0, top) << std::endl;
   }
 
   void select_device() {
@@ -182,4 +184,4 @@ public:
 
 struct OpenCLConfig {
   uint32_t global_size, local_size;
-}
+};

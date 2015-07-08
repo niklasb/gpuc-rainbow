@@ -1,3 +1,4 @@
+#line 2 "bitonic.cl"
 void check(__global T *ary, uint a, uint b) {
   T x = ary[a], y = ary[b];
   if (less(y, x)) {
@@ -5,7 +6,7 @@ void check(__global T *ary, uint a, uint b) {
     ary[b] = x;
   }
 }
-__kernel void cross(
+__kernel void bitonic_cross(
     __global T *ary,
     uint size,
     uint offset,
@@ -20,7 +21,7 @@ __kernel void cross(
   check(ary, a, b);
 }
 
-__kernel void inc(
+__kernel void bitonic_inc(
     __global T *ary,
     uint size,
     uint offset,

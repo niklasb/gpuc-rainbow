@@ -95,7 +95,8 @@ __kernel void generate_chains(
     __constant uint* alphabet,
     int alphabet_size,
     __global ulong2 *out,
-    int block_size
+    int block_size,
+    ulong out_offset
     /*,__global ulong *dbg*/
     )
 {
@@ -116,7 +117,7 @@ __kernel void generate_chains(
     /*params.dbg = dbg + start - offset;*/
     ulong end = construct_chain_from_value(&params, start, 0, chain_len, hash);
     /*ulong end = 2;*/
-    out[start - offset] = (ulong2){end, start};
+    out[start - offset + out_offset] = (ulong2){end, start};
   }
 }
 
