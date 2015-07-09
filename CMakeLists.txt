@@ -42,6 +42,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -std=c++0x -march=native -mtune=nati
 file(GLOB SOURCES *.cpp)
 list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/rt-build.cpp)
 list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/rt-lookup.cpp)
+list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/rt-benchmarks.cpp)
 add_executable(rt-build
   rt-build.cpp
   ${SOURCES}
@@ -52,8 +53,15 @@ add_executable(rt-lookup
   ${SOURCES}
   ${CL_COMPILED_SOURCES}
 )
+add_executable(rt-benchmarks
+  rt-benchmarks.cpp
+  ${SOURCES}
+  ${CL_COMPILED_SOURCES}
+)
 
 target_link_libraries(rt-build ${OPENCL_LIBRARIES})
 target_link_libraries(rt-build ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(rt-lookup ${OPENCL_LIBRARIES})
 target_link_libraries(rt-lookup ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(rt-benchmarks ${OPENCL_LIBRARIES})
+target_link_libraries(rt-benchmarks ${CMAKE_THREAD_LIBS_INIT})

@@ -36,10 +36,8 @@ int build_string(__constant uint* alphabet, ulong n, uint* buf)
     /*len = ceil(log((float)n) / log((float)ALPHA_SIZE));*/
     /*n -= pow((float)ALPHA_SIZE, len - 1);*/
   /*}*/
-  int i;
-  /*buf[0] = GETCHAR(alphabet, n % ALPHA_SIZE)*/
-         /*| (GETCHAR(alphabet, n % ALPHA_SIZE)*/
   uint x = 0;
+  int i;
   for (i = 0; i < len; ++i) {
     x|=GETCHAR(alphabet, n % ALPHA_SIZE)<<((i&3)<<3);
     if ((i&3)==3) {
@@ -55,6 +53,8 @@ int build_string(__constant uint* alphabet, ulong n, uint* buf)
 
 void hash_from_index(__constant uint* alphabet, ulong idx, uint* hash) {
   uint buf[16];
+  for (int i = 0; i < 16; ++i)
+    buf[i] = 0;
   int len = build_string(alphabet, idx, buf);
   compute_hash(buf, len, hash);
 }
@@ -104,9 +104,7 @@ __kernel void hash_and_reduce(
   ulong start = inout[idx];
 
   uint hash[HASH_SIZE];
-  uint buf[16];
-  int len = build_string(alphabet, start, buf);
-  compute_hash(buf, len, hash);
+  hash_from_index(alphabet, start, hash);
   inout[idx] = reduce(hash, round);
 }
 

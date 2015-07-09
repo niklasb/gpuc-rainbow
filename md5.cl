@@ -115,13 +115,18 @@ uint4 md5_compress(uint *buf, uint4 state) {
 #undef I
 }
 
-// 1 block only. len must be <= 55
+// 1 block only. len must be <= 55. buf must be zero after len
 void md5(uint *buf, uint len, uint* hash) {
   PUTCHAR(buf, len, 0x80);
-  for (int i = len + 1; i < 64; ++i)
-    PUTCHAR(buf, i, 0);
-  PUTCHAR(buf, 56, len << 3);
-  PUTCHAR(buf, 57, len >> 5);
+
+  // let the caller do it
+  /*for (int i = len + 1; i < 64; ++i)*/
+    /*PUTCHAR(buf, i, 0);*/
+
+  // works for short enough texts
+  buf[14] = len << 3;
+  /*PUTCHAR(buf, 56, len << 3);*/
+  /*PUTCHAR(buf, 57, len >> 5);*/
   uint4 state;
   state.x = 0x67452301;
   state.y = 0xefcdab89;
