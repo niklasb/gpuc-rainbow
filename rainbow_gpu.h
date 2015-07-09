@@ -35,7 +35,8 @@ struct GPUImplementation {
     kernel_generate_chains,
     kernel_compute_endpoints,
     kernel_lookup_endpoints,
-    kernel_fill_ulong;
+    kernel_fill_ulong,
+    kernel_hash_and_reduce;
 
   GPUImplementation(
       const RainbowTableParams& p,
@@ -57,6 +58,7 @@ struct GPUImplementation {
     kernel_compute_endpoints = cl.get_kernel(prog, "compute_endpoints");
     kernel_lookup_endpoints = cl.get_kernel(prog, "lookup_endpoints");
     kernel_fill_ulong = cl.get_kernel(prog, "fill_ulong");
+    kernel_hash_and_reduce = cl.get_kernel(prog, "hash_and_reduce");
     alphabet_buf = cl.alloc<char>((p.alphabet.size() + 3) / 4 * 4, CL_MEM_READ_ONLY);
     cl.write_async(alphabet_buf, p.alphabet.c_str(), p.alphabet.size());
   }
@@ -146,6 +148,39 @@ struct GPUImplementation {
       cl.copy<char>(buf1, buf, objsize * bufsize);
   }
 
+  void benchmark_hash_and_reduce(uint32_t iters, uint32_t hash_iters) {
+    assert(hash_iters >= 1);
+    uint64_t hashes = iters * clcfg.global_size * hash_iters;
+    std::cout << "Computing " << hashes << " hashes" << std::endl;
+    using E = std::pair<ulong,ulong>;
+    auto buf = cl.alloc<E>(clcfg.global_size);
+    assert(0 == hash_iters - 1);
+    kernel_hash_and_reduce.setArg(0, (cl_ulong)p.num_strings);
+    kernel_hash_and_reduce.setArg(1, (cl_int)p.chain_len);
+    kernel_hash_and_reduce.setArg(2, (cl_int)p.table_index);
+    kernel_hash_and_reduce.setArg(3, alphabet_buf);
+    kernel_hash_and_reduce.setArg(4, (cl_int)p.alphabet.size());
+    kernel_hash_and_reduce.setArg(5, (cl_uint)hash_iters - 1);
+    kernel_hash_and_reduce.setArg(6, buf);
+    cl.finish_queue();
+    double t0 = utils::get_time();
+    for (uint32_t i = 0; i < iters; ++i) {
+      run(kernel_hash_and_reduce, clcfg.global_size);
+    }
+    cl.finish_queue();
+    double t1 = utils::get_time();
+    std::vector<E> results(clcfg.global_size);
+    cl.read_sync(buf, results.data(), clcfg.global_size);
+    for (size_t i = 0; i < clcfg.global_size; ++i) {
+      assert(results[i].second == i);
+      //Hash h;
+      //cpu.compute_hash(i, h);
+      //assert(results[i].first == cpu.reduce(h, 0));
+    }
+    std::cout << "time = " << t1-t0 << std::endl;
+    std::cout << "throughput = " << hashes/(t1-t0)*1e-6 << " mhashes/sec" << std::endl;
+  }
+
   void build(RainbowTable& rt) {
     using C = std::pair<cl_ulong,cl_ulong>;
     //auto chain_buf = cl.alloc<cl_ulong>(2 * clcfg.global_size * block_size);
@@ -186,7 +221,6 @@ struct GPUImplementation {
           bufsize *= 2;
         }
         //std::cout << "new bufsize=" << bufsize << std::endl;
-
         kernel_generate_chains.setArg(0, (cl_ulong)offset);
         kernel_generate_chains.setArg(7, chain_buf);
         kernel_generate_chains.setArg(9, (cl_ulong)total);

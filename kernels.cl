@@ -87,6 +87,30 @@ ulong construct_chain_from_value(
       params, hash, start_iteration, end_iteration);
 }
 
+__kernel void hash_and_reduce(
+    ulong num_strings,
+    int chain_len,
+    int table_index,
+    __constant uint* alphabet,
+    int alphabet_size,
+    uint end_iteration,
+    __global ulong2 *out
+    )
+{
+  struct RTParams params;
+  params.num_strings = num_strings;
+  params.chain_len = chain_len;
+  params.table_index = table_index;
+  params.alphabet = alphabet;
+  params.alphabet_size = alphabet_size;
+
+  ulong start = get_global_id(0);
+  uint hash[HASH_SIZE];
+  /*hash_from_index(&params, start, hash);*/
+  ulong end = construct_chain_from_value(&params, start, 0, end_iteration, hash);
+  out[start] = (ulong)(start, start);
+}
+
 __kernel void generate_chains(
     ulong offset,
     ulong hi,

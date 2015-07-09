@@ -52,13 +52,12 @@ void usage(char *argv0) {
 
 
 uint64_t max_string_len;
-bool use_opencl = false;
+bool use_opencl = false, verify = false;
 double alpha = 0.01;
 uint64_t samples = 0;
 uint64_t seed = 0;
 RainbowTableParams params;
 string outfile;
-bool verify = 0;
 uint64_t block_size = 1;
 OpenCLConfig clcfg { 1<<17, 1<<8 };
 

@@ -100,15 +100,15 @@ struct CPUImplementation {
       exit(1);
     }
     rt.table.resize(p.num_start_values);
+    utils::Progress progress(p.num_start_values);
     stats.add_timing("time_generate", [&]() {
-      utils::Progress progress(p.num_start_values);
       for (std::uint64_t i = 0; i < p.num_start_values; ++i) {
         progress.report(i);
         std::uint64_t start = offset + i;
         rt.table[i] = {construct_chain(start, 0, p.chain_len).first, start};
       }
-      progress.finish();
     });
+    progress.finish();
     stats.add_timing("time_sort", [&]() {
       sort_and_uniqify(rt);
     });
