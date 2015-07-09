@@ -39,7 +39,7 @@ struct CPUImplementation {
     }
     n -= offset;
     for (int i = 0; i < len; ++i) {
-      buf[len - i - 1] = p.alphabet[n%base];
+      buf[i] = p.alphabet[n%base];
       n/=base;
     }
   }
@@ -53,11 +53,10 @@ struct CPUImplementation {
   }
 
   std::uint64_t reduce(const Hash& h, std::uint64_t round) {
-    std::uint64_t x = 0;
-    for (std::uint64_t i = 0; i < h.size(); ++i) {
-      x = ((std::uint64_t)x * 0x100 + h[i]) % p.num_strings;
-    }
-    return (x + round + MAGIC_MANGLER*p.table_index) % p.num_strings;
+    uint32_t *hash = (uint32_t*)&h[0];
+    uint64_t x = hash[0] | ((uint64_t)hash[1]<<32);
+    x ^= round | (p.table_index<<32);
+    return x % p.num_strings;
   }
 
   void compute_hash(std::uint64_t x, Hash& h) {

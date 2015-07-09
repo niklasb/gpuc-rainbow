@@ -114,6 +114,16 @@ public:
     std::cout << "  Device local memory size: " << local_mem_size << " bytes" << std::endl;
   }
 
+  std::string get_binary(cl::Program prog) {
+    auto binaries = prog.getInfo<CL_PROGRAM_BINARIES>();
+    std::string res = "";
+    for (char* binary : binaries) {
+      res += std::string(binary);
+      res += "\n\n";
+    }
+    return res;
+  }
+
   template <typename T>
   cl::Buffer alloc(size_t num, cl_mem_flags flags = CL_MEM_READ_WRITE) {
     return cl::Buffer(context, flags, std::max(size_t{1}, num * sizeof(T)), nullptr, nullptr);

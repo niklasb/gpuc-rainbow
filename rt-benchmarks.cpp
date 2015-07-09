@@ -20,7 +20,7 @@ void usage(char *argv0) {
   cerr << "Usage: " << argv0 << " [FLAGS] [benchmark_name benchmark_opts]"
        << endl
        << "BENCHMARKS" << endl
-       << "  hash_and_reduce chain_len:INT (default)" << endl
+       << "  hash_and_reduce (default)" << endl
        << endl
        << "FLAGS" << endl
        << "  -i INT     Benchmark iterations" << endl
@@ -33,7 +33,6 @@ void usage(char *argv0) {
 uint32_t block_size = 1;
 OpenCLConfig clcfg { 1<<17, 1<<8 };
 string benchmark = "hash_and_reduce";
-uint32_t chain_len = 1;
 uint32_t iterations = 1000;
 
 void parse_opts(int argc, char *argv[]) {
@@ -98,19 +97,19 @@ void parse_opts(int argc, char *argv[]) {
       }
       benchmark = o;
     }
-    if (pos == 1) {
-      if (benchmark == "hash_and_reduce") {
-        if (!(stringstream(o) >> chain_len), chain_len == 0) {
-          cerr << "ERROR: chain len must be an integer > 0" << endl;
-          usage(argv[0]);
-        }
-      } else {
-        usage(argv[0]);
-      }
-    }
+    //if (pos == 1) {
+      //if (benchmark == "hash_and_reduce") {
+        //if (!(stringstream(o) >> chain_len), chain_len == 0) {
+          //cerr << "ERROR: chain len must be an integer > 0" << endl;
+          //usage(argv[0]);
+        //}
+      //} else {
+        //usage(argv[0]);
+      //}
+    //}
     pos++;
   }
-  if (pos > 2)
+  if (pos > 1)
     usage(argv[0]);
 }
 
@@ -125,13 +124,14 @@ int main_(int argc, char* argv[]) {
   params.chain_len = 1000;
   params.alphabet = "abcdefghijklmnopqrstuvwxyz";
   params.num_strings = 1e9;
+  params.table_index = 0;
   CPUImplementation cpu(params, stats);
   GPUImplementation gpu(params, cl, cpu, stats, false, clcfg, block_size);
 
   if (benchmark == "hash_and_reduce") {
     cout << "Benchmark hash_and_reduce, " << iterations
-      << " iterations, chain len " << chain_len << endl;
-    gpu.benchmark_hash_and_reduce(iterations, chain_len);
+      << " iterations" << endl;
+    gpu.benchmark_hash_and_reduce(iterations);
   } else {
     cerr << "ERROR: No such benchmark: `" << benchmark << "'" << endl;
     usage(argv[0]);

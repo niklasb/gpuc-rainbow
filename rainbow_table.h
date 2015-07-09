@@ -55,4 +55,3 @@ struct RainbowTable {
 };
 
 const std::uint64_t NOT_FOUND = -1;
-const std::uint64_t MAGIC_MANGLER = 1337133713371337;

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <sstream>
 #include <vector>
+
 #include <unistd.h>
 
 #include "hash.h"
@@ -50,10 +52,23 @@ struct GPUImplementation {
     : p(p), cl(cl), cpu(cpu), stats(stats), verify(verify)
     , block_size(block_size), clcfg(clcfg)
   {
+    std::stringstream defines;
+    defines
+      << "#define ALPHA_SIZE " << p.alphabet.size() << std::endl
+      << "#define TABLE_INDEX " << p.table_index << std::endl
+      << "#define NUM_STRINGS " << p.num_strings << std::endl
+      << "#define CHAIN_LEN " << p.chain_len << std::endl
+      << "#define BLOCK_SIZE " << block_size << std::endl
+      << "#define LOCAL_SIZE " << clcfg.local_size << std::endl
+      << "#define GLOBAL_SIZE " << clcfg.global_size << std::endl
+      ;
     auto prog = cl.build_program(std::vector<std::string> {
+      defines.str(),
       ocl_code::md5_cl_str,
       ocl_code::kernels_cl_str
     });
+    std::ofstream f("kernel.ptx");
+    f << cl.get_binary(prog);
     kernel_generate_chains = cl.get_kernel(prog, "generate_chains");
     kernel_compute_endpoints = cl.get_kernel(prog, "compute_endpoints");
     kernel_lookup_endpoints = cl.get_kernel(prog, "lookup_endpoints");
@@ -148,37 +163,47 @@ struct GPUImplementation {
       cl.copy<char>(buf1, buf, objsize * bufsize);
   }
 
-  void benchmark_hash_and_reduce(uint32_t iters, uint32_t hash_iters) {
-    assert(hash_iters >= 1);
-    uint64_t hashes = iters * clcfg.global_size * hash_iters;
+  void benchmark_hash_and_reduce(uint32_t iters) {
+    uint64_t hashes = iters * clcfg.global_size;
     std::cout << "Computing " << hashes << " hashes" << std::endl;
-    using E = std::pair<ulong,ulong>;
-    auto buf = cl.alloc<E>(clcfg.global_size);
-    assert(0 == hash_iters - 1);
-    kernel_hash_and_reduce.setArg(0, (cl_ulong)p.num_strings);
-    kernel_hash_and_reduce.setArg(1, (cl_int)p.chain_len);
-    kernel_hash_and_reduce.setArg(2, (cl_int)p.table_index);
-    kernel_hash_and_reduce.setArg(3, alphabet_buf);
-    kernel_hash_and_reduce.setArg(4, (cl_int)p.alphabet.size());
-    kernel_hash_and_reduce.setArg(5, (cl_uint)hash_iters - 1);
-    kernel_hash_and_reduce.setArg(6, buf);
+    auto buf = cl.alloc<cl_ulong>(clcfg.global_size);
+    //auto dbg = cl.alloc<cl_uint>(32*clcfg.global_size);
+    kernel_hash_and_reduce.setArg(0, alphabet_buf);
+    kernel_hash_and_reduce.setArg(1, buf);
+    //kernel_hash_and_reduce.setArg(3, dbg);
     cl.finish_queue();
     double t0 = utils::get_time();
     for (uint32_t i = 0; i < iters; ++i) {
+      kernel_hash_and_reduce.setArg(2, (cl_ulong)i);
+      fill_ulong(buf, clcfg.global_size, uint64_t{i}*clcfg.global_size, 1);
       run(kernel_hash_and_reduce, clcfg.global_size);
     }
     cl.finish_queue();
     double t1 = utils::get_time();
-    std::vector<E> results(clcfg.global_size);
-    cl.read_sync(buf, results.data(), clcfg.global_size);
-    for (size_t i = 0; i < clcfg.global_size; ++i) {
-      assert(results[i].second == i);
-      //Hash h;
-      //cpu.compute_hash(i, h);
-      //assert(results[i].first == cpu.reduce(h, 0));
-    }
     std::cout << "time = " << t1-t0 << std::endl;
     std::cout << "throughput = " << hashes/(t1-t0)*1e-6 << " mhashes/sec" << std::endl;
+    std::vector<cl_ulong> results(clcfg.global_size);
+    cl.read_sync(buf, results.data(), clcfg.global_size);
+
+    //std::vector<cl_uint> db_results(clcfg.global_size*16);
+    //cl.read_sync(dbg, db_results.data(), clcfg.global_size*16);
+    //for (int i =  0; i < 64; ++i) {
+      //std::printf("%02x", ((unsigned char*)db_results.data())[i]);
+    //}
+    //std::cout << std::endl;
+    //for (int i =  0; i < 64; ++i) {
+      //std::printf("%02x", ((unsigned char*)db_results.data())[i+64]);
+    //}
+    //std::cout << std::endl;
+
+    for (size_t i = 0; i < clcfg.global_size; ++i) {
+      uint64_t start = (uint64_t)(iters-1)*clcfg.global_size + i;
+      Hash h;
+      cpu.compute_hash(start, h);
+      //uint32_t buf[] = { start & 0xffffffff, 0x42424242, 0x41414141 };
+      //::compute_hash((unsigned char*)buf, 12, h);
+      assert(results[i]==cpu.reduce(h, iters - 1));
+    }
   }
 
   void build(RainbowTable& rt) {
@@ -190,14 +215,8 @@ struct GPUImplementation {
     uint64_t hi = lo + p.num_start_values;
 
     kernel_generate_chains.setArg(1, (cl_ulong)hi);
-    kernel_generate_chains.setArg(2, (cl_ulong)p.num_strings);
-    kernel_generate_chains.setArg(3, (cl_int)p.chain_len);
-    kernel_generate_chains.setArg(4, (cl_int)p.table_index);
-    kernel_generate_chains.setArg(5, alphabet_buf);
-    kernel_generate_chains.setArg(6, (cl_int)p.alphabet.size());
-    kernel_generate_chains.setArg(8, (cl_int)block_size);
-    kernel_generate_chains.setArg(9, (cl_ulong)0);
-    //kernel_generate_chains.setArg(10, debug_buf);
+    kernel_generate_chains.setArg(2, alphabet_buf);
+    //kernel_generate_chains.setArg(5, debug_buf);
 
     uint64_t bufsize = 1<<20;
     auto chain_buf = cl.alloc<C>(bufsize);
@@ -222,8 +241,8 @@ struct GPUImplementation {
         }
         //std::cout << "new bufsize=" << bufsize << std::endl;
         kernel_generate_chains.setArg(0, (cl_ulong)offset);
-        kernel_generate_chains.setArg(7, chain_buf);
-        kernel_generate_chains.setArg(9, (cl_ulong)total);
+        kernel_generate_chains.setArg(3, chain_buf);
+        kernel_generate_chains.setArg(4, (cl_ulong)total);
 
         run(kernel_generate_chains, count);
         total += count;
@@ -274,10 +293,11 @@ struct GPUImplementation {
       //assert(rt.table[i].first == i && rt.table[i].second == i);
   }
 
-  void fill_ulong(cl::Buffer buf, std::uint32_t size, std::uint64_t val) {
+  void fill_ulong(cl::Buffer buf, std::uint32_t size, std::uint64_t a, uint64_t b=0) {
     kernel_fill_ulong.setArg(0, buf);
     kernel_fill_ulong.setArg(1, (cl_ulong)size);
-    kernel_fill_ulong.setArg(2, (cl_ulong)val);
+    kernel_fill_ulong.setArg(2, (cl_ulong)a);
+    kernel_fill_ulong.setArg(3, (cl_ulong)b);
     run(kernel_fill_ulong, size);
   }
 
@@ -292,14 +312,10 @@ struct GPUImplementation {
     auto debug_buf = cl.alloc<cl_ulong>(hi);
 
     kernel_compute_endpoints.setArg(1, (cl_ulong)hi);
-    kernel_compute_endpoints.setArg(2, (cl_ulong)p.num_strings);
-    kernel_compute_endpoints.setArg(3, (cl_int)p.chain_len);
-    kernel_compute_endpoints.setArg(4, (cl_int)p.table_index);
-    kernel_compute_endpoints.setArg(5, alphabet_buf);
-    kernel_compute_endpoints.setArg(6, (cl_int)p.alphabet.size());
-    kernel_compute_endpoints.setArg(7, query_buf);
-    kernel_compute_endpoints.setArg(8, (cl_int)queries.size());
-    kernel_compute_endpoints.setArg(9, lookup_buf);
+    kernel_compute_endpoints.setArg(2, alphabet_buf);
+    kernel_compute_endpoints.setArg(3, query_buf);
+    kernel_compute_endpoints.setArg(4, (cl_int)queries.size());
+    kernel_compute_endpoints.setArg(5, lookup_buf);
 
     stats.add_timing("time_compute_endpoints", [&]() {
       utils::Progress progress(hi);
@@ -345,17 +361,13 @@ struct GPUImplementation {
     cl.write_async(rt_buf, rt.table.data(), rt.table.size());
 
     kernel_lookup_endpoints.setArg(1, (cl_ulong)hi);
-    kernel_lookup_endpoints.setArg(2, (cl_ulong)p.num_strings);
-    kernel_lookup_endpoints.setArg(3, (cl_int)p.chain_len);
-    kernel_lookup_endpoints.setArg(4, (cl_int)p.table_index);
-    kernel_lookup_endpoints.setArg(5, alphabet_buf);
-    kernel_lookup_endpoints.setArg(6, (cl_int)p.alphabet.size());
-    kernel_lookup_endpoints.setArg(7, query_buf);
-    kernel_lookup_endpoints.setArg(8, lookup_buf);
-    kernel_lookup_endpoints.setArg(9, result_buf);
-    kernel_lookup_endpoints.setArg(10, rt_buf);
-    kernel_lookup_endpoints.setArg(11, (cl_ulong)0);
-    kernel_lookup_endpoints.setArg(12, (cl_ulong)rt.table.size());
+    kernel_lookup_endpoints.setArg(2, alphabet_buf);
+    kernel_lookup_endpoints.setArg(3, query_buf);
+    kernel_lookup_endpoints.setArg(4, lookup_buf);
+    kernel_lookup_endpoints.setArg(5, result_buf);
+    kernel_lookup_endpoints.setArg(6, rt_buf);
+    kernel_lookup_endpoints.setArg(7, (cl_ulong)0);
+    kernel_lookup_endpoints.setArg(8, (cl_ulong)rt.table.size());
     //kernel_lookup_endpoints.setArg(12, debug_buf);
 
     stats.add_timing("time_lookup_endpoints", [&]() {
