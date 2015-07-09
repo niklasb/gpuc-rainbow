@@ -292,6 +292,9 @@ int main_(int argc, char* argv[]) {
   for (auto& it : stats.stats) {
     cout << "  " << it.first << " = " << it.second << endl;
   }
+  cout << "  throughput_generate = "
+    << params.num_start_values * params.chain_len / stats.stats["time_generate"] * 1e-6
+    << " mhashes/sec" << endl;
   return 0;
 }
 
