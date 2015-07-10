@@ -1,3 +1,8 @@
+## About this project
+
+This program is the product of a school project on general-purpose GPU computing.
+It can build and query simple rainbow table and is accelerated with OpenCL.
+
 ## How to build and run
 
 CMake is used:
