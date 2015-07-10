@@ -1,4 +1,5 @@
 #line 2 "bitonic.cl"
+void check(__global T *ary, uint a, uint b);
 void check(__global T *ary, uint a, uint b) {
   T x = ary[a], y = ary[b];
   if (less(y, x)) {

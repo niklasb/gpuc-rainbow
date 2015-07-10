@@ -28,6 +28,7 @@ namespace ocl_primitives {
     if (it == std::end(memo)) {
       auto defines = std::string()
         + "#define T " + type + "\n"
+        + "bool less(T x, T y);\n"
         + "bool less(T x, T y) { return (" + comp + "); }\n";
       auto prog = cl.build_program(std::vector<std::string> {
         defines,

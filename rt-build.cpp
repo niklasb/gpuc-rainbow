@@ -46,7 +46,7 @@ void usage(char *argv0) {
        << "  -g INT   OpenCL only: global group size" << endl
        << endl
        << "EXAMPLES" << endl
-       << "  " << argv0 << " -o 7 abcdefghijklmnopqrstuvwxyz0123456789 outputfile" << endl;
+       << "  " << argv0 << " -o 6 abcdefghijklmnopqrstuvwxyz0123456789 alphalow_num_6" << endl;
   exit(EXIT_FAILURE);
 }
 

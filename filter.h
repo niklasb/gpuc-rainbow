@@ -32,7 +32,8 @@ namespace ocl_primitives {
       auto defines = std::string()
         + "#define T " + type + "\n"
         + additional_defines + "\n"
-        + "bool predicate(__global T* ary, uint i) { return (" + predicate + "); }\n";
+        + "bool predicate(const __global T* ary, uint i);\n"
+        + "bool predicate(const __global T* ary, uint i) { return (" + predicate + "); }\n";
       auto prog = cl.build_program(std::vector<std::string> {
         defines,
         ocl_code::filter_cl_str
@@ -87,7 +88,7 @@ namespace ocl_primitives {
     bitonic_sort(cl, clcfg, buf, size, type, less);
     return filter(cl, clcfg, buf, element_size, size, type,
         "i == 0 || less(ary[i-1], ary[i])",
-        "bool less(T x, T y) { return (" + less + "); }\n");
+        "bool less(T x, T y); bool less(T x, T y) { return (" + less + "); }\n");
   }
 
   uint32_t remove_dups_inplace(

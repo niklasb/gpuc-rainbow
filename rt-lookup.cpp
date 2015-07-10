@@ -31,7 +31,11 @@ void usage(char *argv0) {
        << "  -r INT     Specify random seed (defaults to constant value)" << endl
        << "  -l INT     OpenCL only: local group size" << endl
        << "  -g INT     OpenCL only: global group size" << endl
-       << "  -b INT     OpenCL only: block size" << endl;
+       << "  -b INT     OpenCL only: block size" << endl
+       << endl
+       << "EXAMPLES" << endl
+       << "  " << argv0 << " -H a4d80eac9ab26a4a2da04125bc2c096a alphalow_num_6" << endl
+       ;
   exit(EXIT_FAILURE);
 }
 

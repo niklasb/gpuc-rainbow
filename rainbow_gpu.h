@@ -91,14 +91,10 @@ struct GPUImplementation {
     cl.write_sync<uint32_t>(out, local.data(), size);
   }
 
-  void run(cl::Kernel kernel, uint32_t size) {
-    cl.run_kernel(kernel,
-        cl::NDRange(utils::round_to_multiple(size, clcfg.local_size)),
-        cl::NDRange(clcfg.local_size));
-  }
   void run(cl::Kernel kernel, uint64_t size) {
-    assert(size <= std::numeric_limits<std::uint32_t>::max());
-    run(kernel, (uint32_t)size);
+    cl.run_kernel(kernel,
+        cl::NDRange(utils::round_to_multiple(size, uint64_t{clcfg.local_size})),
+        cl::NDRange(clcfg.local_size));
   }
 
   void sort(

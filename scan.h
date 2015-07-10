@@ -28,6 +28,7 @@ namespace ocl_primitives {
     if (it == std::end(memo)) {
       auto defines = std::string()
         + "#define T " + type + "\n"
+        + "T combine(T x, T y);\n"
         + "T combine(T x, T y) { return (" + combine + "); }\n"
         + "#define IDENTITY (" + id + ")\n";
       auto prog = cl.build_program(std::vector<std::string> {
