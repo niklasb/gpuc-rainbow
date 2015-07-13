@@ -1,0 +1,10 @@
+alphalow-num-5
+
+t = 1000
+
+impl             gen speed   lookup speed
+RainbowCrack     5.0 m/s     16.6/s
+niklas-cpu       4.6 m/s     12.0/s
+niklas-ocl       662 m/s     714.0/s
+CryptoHaze-ocl   735 m/s     (51.0/s)
+CryptoHaze-cuda  1070 m/s    (100.0/s)
