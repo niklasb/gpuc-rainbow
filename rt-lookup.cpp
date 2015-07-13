@@ -22,7 +22,7 @@ void usage(char *argv0) {
        << endl
        << "MODES" << endl
        << "  -f STRING  Read hashes from file" << endl
-       << "  -l STRING  Look up given hash" << endl
+       << "  -H STRING  Look up given hash" << endl
        << "  -s INT     Use random sampling to estimate coverage" << endl
        << endl
        << "FLAGS" << endl
