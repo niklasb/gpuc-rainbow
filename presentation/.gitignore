@@ -1,0 +1,17 @@
+*.aux
+*.log
+*.nav
+*.snm
+*.toc
+*.fmt
+*.fdb_*
+*.fls
+__pycache__
+*.pyc
+*.zip
+*.class
+*.rec
+*.vrb
+*.dSYM
+*.out
+*.pdf

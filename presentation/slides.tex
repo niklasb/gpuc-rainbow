@@ -1,0 +1,182 @@
+\documentclass[ngerman,hyperref={pdfpagelabels=true}]{beamer}
+\usepackage{etex}
+
+% -----------------------------------------------------------------------------
+
+\graphicspath{{img/}}
+
+% -----------------------------------------------------------------------------
+
+\usetheme{KIT}
+
+\setbeamercovered{transparent}
+\setbeamertemplate{enumerate items}[ball]
+
+\usepackage[ngerman]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[TS1,T1]{fontenc}
+\usepackage{array}
+\usepackage[absolute,overlay]{textpos}
+\usepackage{beamerKITdefs}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{listings}
+\usepackage[loadonly]{enumitem}
+\usepackage{mathtools}
+
+\usetikzlibrary{trees,shapes}
+
+\pdfpageattr {/Group << /S /Transparency /I true /CS /DeviceRGB>>}
+\pdfpageattr {/Group << /S /Transparency /I true /CS /DeviceRGB>>}
+
+
+\title{Rainbow Tables}
+\subtitle{Abschlussproject ,,GPU Computing'' -- Niklas Baumstark}
+
+
+\author{Niklas Baumstark}
+\institute{Lehrstuhl für Computergrafik}
+
+\TitleImage[width=\titleimagewd,height=\titleimageht]{titel.jpg}
+
+\KITinstitute{ITI}
+\KITfaculty{Fakultät für Informatik}
+
+\lstset{
+basicstyle=\ttfamily\small
+}
+
+% ----------------------------------------------------------------------
+\begin{document}
+% ----------------------------------------------------------------------
+
+%\AtBeginSection[]
+%{\frame{\frametitle{Outline}
+%\tableofcontents[currentsection]}}
+
+\setlength\textheight{7cm} %required for correct vertical alignment, if [t] is not used as documentclass parameter
+
+% title frame
+\begin{frame}
+  \maketitle
+\end{frame}
+
+\newcommand\BigO{\mathcal{O}}
+
+% title frame
+\begin{frame}{Sichere Speicherung von Passw"ortern}
+  \begin{itemize}
+  \item Viele User verwenden selbes Passwort f"ur verschiedene Dienste
+  \item Szenario: Kompromittierter Server im Internet
+  \begin{itemize}
+  \item Angreifer kann Datenbank auslesen
+  \item Angreifer kann u.U. live eingegebene Passw"orter mitschneiden
+  \end{itemize}
+  \item Ziel: Angreifer kann inaktive Passw"orter nicht lesen
+  \item L"osung: Vor Speicherung Hashfunktion $h$ auf Passwort anwenden
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Als Angreifer}
+  \begin{block}{Gegeben}
+  Passwortraum $P$, Hashraum $H$, Hashfunktion $h: P \rightarrow H$, Hashwert $y \in H$
+  \end{block}
+  \begin{block}{Gesucht}
+  Urbild $p \in P$ mit $h(p) = y$
+  \end{block}
+  \begin{block}{Kein Speicher $\rightarrow$ $\BigO(|P|)$ Zeit pro Anfrage}
+  Iteriere "uber $P$ bis wir Urbild finden
+  \end{block}
+  \begin{block}{$\BigO(|P|)$ Speicher $\rightarrow$ $\BigO(1)$ Zeit pro Anfrage}
+  Baue einmalig Datenbank aller Hashwerte auf
+  \end{block}
+\end{frame}
+
+\newlength{\arrow}
+\settowidth{\arrow}{\scriptsize$10000$}
+\newcommand*{\ra}[1]{\xrightarrow{\mathmakebox[\arrow]{#1}}}
+
+\begin{frame}{Rainbow Tables}
+  \begin{itemize}
+  \item Rainbow Tables bieten Tradeoff zwischen Speicher und Abfragezeit
+  \item Benutze Familie von Reduktionsfunktionen $r_i: H \rightarrow P$
+  \item Berechne Ketten von Werten die zwischen $H$ und $P$ alternieren, ausgehend
+  von Startwerten $x_0 \in P$
+
+\[
+x_0 \ra{h} h_0 \ra{r_0} x_1 \ra{h} h_1 \ra{r_1} x_2 \ra{h} \ldots \ra{r_{t-1}} x_t
+\]
+
+  \item W"ahle verschiedene $x_0$, speichere f"ur jede Kette nur $x_0$ und $x_t$
+  \item Implizit wird auch die Menge aller $x_j$ ($1 \le x_j < t$) repr"asentiert
+  \item Bei Hashabfrage partielle Ketten aufbauen und Endpunkte in der Datenbank
+  nachschlagen
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Kollisionen und Merges}
+  \begin{itemize}
+  \item Wenn $x_i$ f"ur festes $i$ in verschiedene Ketten "ubereinstimmt kollidieren
+  sie ab diesem Punkt bis zum Ende $\rightarrow$ \emph{Merge}
+  \item Ziel: Hohe Abdeckung von $P$, also m"oglichst wenige Merges
+  \item \emph{Perfekte} Tabelle hat gar keine Merges, alle Endpunkte verschieden
+  \item Ketten k"onnen auch f"ur $x_i$, $x_j$ mit $i \neq j$ kollidieren, wirkt
+  sich aber weniger schlimm auf Abdeckung aus
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Das Projekt}
+  \begin{itemize}
+  \item Aufbauen und Abfragen von perfekten Rainbow Tables mithilfe der GPU,
+  "uber Alphabet $\Sigma$
+  \item Ziele
+  \begin{itemize}
+    \item Speichereffizienter Aufbau der Tabelle im Device Memory
+    \item Entfernen von Duplikaten w"ahrend des Aufbaus
+    \item Kompetitiver Durchsatz
+  \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Berechnung der Ketten}
+  \begin{itemize}
+  \item Stelle Strings als Zahlen zur Basis $|\Sigma|$ dar $\rightarrow$ Basisumwandlung
+  \item Ein Work Item pro Kette
+  \item Mikrooptimierungen essentiell, besonders Vermeiden von Branch Divergence
+  \item Duplikatentfernung
+  \begin{itemize}
+    \item F"uhre alle $X$ Iterationen durch
+    \item Schritt 1: Sortiere Ketten nach Endpunkt (Bitonic Sort)
+    \item Schritt 2: Markiere Ketten deren Endpunkt gleich dem des Vorg"angers ist
+    \item Schritt 3: Filtere alle markierten Ketten aus mit Prefix Scan
+    \item Nebeneffekt: Tabelle am Ende schon sortiert
+  \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Hashabfrage}
+  \begin{itemize}
+  \item Berechne partielle Ketten f"ur alle Queries, nach L"ange sortiert
+  \item Sortiere Endpunkte der partiellen Ketten
+  \item Benutze Bin"arsuche um Startpunkte zu finden
+  \item Rekonstruiere Ketten um Hashwert zu finden
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Evaluation}
+
+F"ur $t = 1000, |\Sigma| = 36, n = 6$
+\\[1em]
+
+  \begin{tabular}[]{l | r | r}
+Programm        & Hashreduktionen pro Sek. & Abfragen pro Sek. \\ \hline
+RainbowCrack    & 5.0M   &  16.6 \\
+niklas-cpu      & 4.6M   &  12.0 \\
+niklas-ocl      & 662M   &  714.0 \\
+CryptoHaze-ocl  & 735M   &  (51.0) \\
+CryptoHaze-cuda & 1070M  &  (100.0)
+  \end{tabular}
+
+\end{frame}
+
+\end{document}
