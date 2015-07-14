@@ -98,7 +98,7 @@ basicstyle=\ttfamily\small
 
 \begin{frame}{Rainbow Tables}
   \begin{itemize}
-  \item Rainbow Tables bieten Tradeoff zwischen Speicher und Abfragezeit
+  \item Rainbow Tables bieten Tradeoff zwischen Speicher und Abfragezeit~\cite{oechslin03}
   \item Benutze Familie von Reduktionsfunktionen $r_i: H \rightarrow P$
   \item Berechne Ketten von Werten die zwischen $H$ und $P$ alternieren, ausgehend
   von Startwerten $x_0 \in P$
@@ -148,7 +148,7 @@ x_0 \ra{h} h_0 \ra{r_0} x_1 \ra{h} h_1 \ra{r_1} x_2 \ra{h} \ldots \ra{r_{t-1}} x
     \item F"uhre alle $X$ Iterationen durch
     \item Schritt 1: Sortiere Ketten nach Endpunkt (Bitonic Sort)
     \item Schritt 2: Markiere Ketten deren Endpunkt gleich dem des Vorg"angers ist
-    \item Schritt 3: Filtere alle markierten Ketten aus mit Prefix Scan
+    \item Schritt 3: Filtere alle markierten Ketten aus mit Prefix Scan~\cite{blelloch10}
     \item Nebeneffekt: Tabelle am Ende schon sortiert
   \end{itemize}
   \end{itemize}
@@ -177,6 +177,11 @@ CryptoHaze-ocl  & 735M   &  (51.0) \\
 CryptoHaze-cuda & 1070M  &  (100.0)
   \end{tabular}
 
+\end{frame}
+
+\begin{frame}{Referenzen}
+\bibliographystyle{apalike}
+\bibliography{references}
 \end{frame}
 
 \end{document}

@@ -1,4 +1,4 @@
-slides.pdf: slides.tex decomp1.tex decomp2.tex trie1.tex trie2.tex trie3.tex trie4.tex
+slides.pdf: slides.tex references.bib
 	latexmk -pdf slides.tex
 
 .PHONY: clean

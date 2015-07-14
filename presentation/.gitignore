@@ -15,3 +15,5 @@ __pycache__
 *.dSYM
 *.out
 *.pdf
+*.bbl
+*.blg
