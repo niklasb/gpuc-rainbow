@@ -108,7 +108,6 @@ x_0 \ra{h} h_0 \ra{r_0} x_1 \ra{h} h_1 \ra{r_1} x_2 \ra{h} \ldots \ra{r_{t-1}} x
 \]
 
   \item W"ahle verschiedene $x_0$, speichere f"ur jede Kette nur $x_0$ und $x_t$
-  \item Implizit wird auch die Menge aller $x_j$ ($1 \le x_j < t$) repr"asentiert
   \item Bei Hashabfrage partielle Ketten aufbauen und Endpunkte in der Datenbank
   nachschlagen
   \end{itemize}
@@ -120,8 +119,6 @@ x_0 \ra{h} h_0 \ra{r_0} x_1 \ra{h} h_1 \ra{r_1} x_2 \ra{h} \ldots \ra{r_{t-1}} x
   sie ab diesem Punkt bis zum Ende $\rightarrow$ \emph{Merge}
   \item Ziel: Hohe Abdeckung von $P$, also m"oglichst wenige Merges
   \item \emph{Perfekte} Tabelle hat gar keine Merges, alle Endpunkte verschieden
-  \item Ketten k"onnen auch f"ur $x_i$, $x_j$ mit $i \neq j$ kollidieren, wirkt
-  sich aber weniger schlimm auf Abdeckung aus
   \end{itemize}
 \end{frame}
 
